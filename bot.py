@@ -92,7 +92,7 @@ async def channel_post_listener(client: Client, message: Message):
         message_id=message.id
     )
 
-# ----------------- Admin Commands -----------------
+# ----------------- Admin Command: /index (Batch Method) -----------------
 @app.on_message(filters.command("index") & filters.private)
 async def index_channel_handler(client: Client, message: Message):
     if message.from_user.id not in ADMINS:
@@ -103,34 +103,58 @@ async def index_channel_handler(client: Client, message: Message):
         )
     
     status_msg = await message.reply_text("⏳ **Aapke channel ki indexing shuru ho rahi hai...**")
-    count = 0
     
     try:
-        async for msg in client.get_chat_history(CHANNEL_ID):
-            file = msg.document or msg.audio or msg.video or (msg.photo and msg.photo.file_id)
-            if file:
-                file_name = getattr(file, "file_name", None) or msg.caption or f"File_{msg.id}"
-                file_id = getattr(file, "file_id", "")
-                file_size = getattr(file, "file_size", 0)
-                caption = msg.caption or ""
-                
-                await save_file(
-                    file_id=file_id,
-                    file_name=file_name,
-                    file_size=file_size,
-                    caption=caption,
-                    chat_id=msg.chat.id,
-                    message_id=msg.id
-                )
-                count += 1
-                if count % 20 == 0:
-                    await status_msg.edit_text(f"⏳ **Indexing in progress:** `{count}` files scanned...")
-                    await asyncio.sleep(1)
-        
-        await status_msg.edit_text(f"✅ **Indexing Complete!**\nTotal **{count}** files database mein index ho gayi hain.")
+        temp = await client.send_message(CHANNEL_ID, "Indexing...")
+        last_id = temp.id
+        await temp.delete()
     except Exception as e:
-        await status_msg.edit_text(f"❌ **Indexing Error:** `{str(e)}`\n\nCheck karein ki bot channel mein Admin hai ya nahi.")
+        return await status_msg.edit_text(
+            f"❌ **Channel Access Error:** `{str(e)}`\n\n"
+            "Check karein ki bot channel mein Administrator hai aur messages post karne ki permission on hai."
+        )
+    
+    count = 0
+    batch_size = 200
+    
+    for i in range(last_id, 0, -batch_size):
+        batch_ids = list(range(i, max(0, i - batch_size), -1))
+        try:
+            messages = await client.get_messages(CHANNEL_ID, batch_ids)
+            for msg in messages:
+                if not msg or msg.empty:
+                    continue
+                
+                file = msg.document or msg.audio or msg.video or (msg.photo and msg.photo.file_id)
+                if file:
+                    file_name = getattr(file, "file_name", None) or msg.caption or f"File_{msg.id}"
+                    file_id = getattr(file, "file_id", "")
+                    file_size = getattr(file, "file_size", 0)
+                    caption = msg.caption or ""
+                    
+                    await save_file(
+                        file_id=file_id,
+                        file_name=file_name,
+                        file_size=file_size,
+                        caption=caption,
+                        chat_id=msg.chat.id,
+                        message_id=msg.id
+                    )
+                    count += 1
+            
+            if count > 0 and count % 20 == 0:
+                await status_msg.edit_text(f"⏳ **Indexing in progress:** `{count}` files index ho chuki hain...")
+            await asyncio.sleep(0.3)
+            
+        except FloodWait as e:
+            await asyncio.sleep(e.value)
+        except Exception as e:
+            print(f"Batch fetch error: {e}")
+            continue
+            
+    await status_msg.edit_text(f"✅ **Indexing Complete!**\nTotal **{count}** files database mein successfully index ho gayi hain.")
 
+# ----------------- Admin Command: /stats -----------------
 @app.on_message(filters.command("stats") & filters.private)
 async def stats_handler(client: Client, message: Message):
     if message.from_user.id not in ADMINS:
@@ -148,6 +172,7 @@ async def stats_handler(client: Client, message: Message):
         f"📁 **Total Indexed Files:** `{f_count}`"
     )
 
+# ----------------- Admin Command: /broadcast -----------------
 @app.on_message(filters.command("broadcast") & filters.private & filters.reply)
 async def broadcast_handler(client: Client, message: Message):
     if message.from_user.id not in ADMINS:
@@ -208,10 +233,10 @@ async def search_handler(client: Client, message: Message):
         reply_markup=InlineKeyboardMarkup(buttons)
     )
 
-# ----------------- Callback Handlers (File Send & Pagination) -----------------
+# ----------------- Callback Handlers (File Delivery & Pagination) -----------------
 @app.on_callback_query(filters.regex(r"^get_"))
 async def send_file_callback(client: Client, query: CallbackQuery):
-    doc_id = query.data.split("_")
+    doc_id = query.data.split("_", 1)
     file_info = await get_file_by_id(doc_id)
     
     if not file_info:
@@ -255,7 +280,7 @@ async def pagination_callback(client: Client, query: CallbackQuery):
     await query.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(buttons))
     await query.answer()
 
-# ----------------- Main Entry Point -----------------
+# ----------------- Main Execution -----------------
 if __name__ == "__main__":
     loop = asyncio.get_event_loop()
     loop.run_until_complete(init_db())

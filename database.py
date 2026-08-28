@@ -1,4 +1,5 @@
 import re
+from bson.objectid import ObjectId
 from motor.motor_asyncio import AsyncIOMotorClient
 from config import MONGO_URI, DB_NAME
 
@@ -7,14 +8,28 @@ db = client[DB_NAME]
 
 files_col = db["files"]
 users_col = db["users"]
+settings_col = db["settings"]
 
-# Unique index ensure karna taaki duplicate files save na hon
 async def init_db():
     await files_col.create_index([("file_name", "text"), ("caption", "text")])
     await files_col.create_index([("chat_id", 1), ("message_id", 1)], unique=True)
     await users_col.create_index("user_id", unique=True)
 
-# User Database Functions
+# ----------------- Settings (FSUB Toggle) -----------------
+async def set_fsub_status(enabled: bool):
+    await settings_col.update_one(
+        {"key": "fsub_status"},
+        {"$set": {"enabled": enabled}},
+        upsert=True
+    )
+
+async def get_fsub_status() -> bool:
+    doc = await settings_col.find_one({"key": "fsub_status"})
+    if doc:
+        return doc.get("enabled", False)
+    return False  # Default OFF hai bot growth ke liye
+
+# ----------------- User Functions -----------------
 async def add_user(user_id: int, name: str):
     try:
         await users_col.update_one(
@@ -26,13 +41,12 @@ async def add_user(user_id: int, name: str):
         pass
 
 async def get_all_users():
-    cursor = users_col.find({})
-    return [doc["user_id"] async for doc in cursor]
+    return [doc["user_id"] async for doc in users_col.find({})]
 
 async def count_users():
     return await users_col.count_documents({})
 
-# File Database Functions
+# ----------------- File Functions -----------------
 async def save_file(file_id: str, file_name: str, file_size: int, caption: str, chat_id: int, message_id: int):
     try:
         data = {
@@ -50,20 +64,16 @@ async def save_file(file_id: str, file_name: str, file_size: int, caption: str, 
         )
         return True
     except Exception as e:
-        print(f"Error saving file: {e}")
+        print(f"DB Save Error: {e}")
         return False
 
-import re
-
 async def search_files(query: str, limit: int = 6, skip: int = 0):
-    # Emojis aur special symbols ko clean karna taaki exact words match hon
     clean_query = re.sub(r'[^\w\s]', ' ', query)
     words = [w.strip() for w in clean_query.split() if len(w.strip()) > 1]
     
     if not words:
         words = [query.strip()]
         
-    # File Name YA Caption dono mein match karega
     regex_queries = [
         {
             "$or": [
@@ -82,7 +92,6 @@ async def search_files(query: str, limit: int = 6, skip: int = 0):
     return results, total
 
 async def get_file_by_id(doc_id: str):
-    from bson.objectid import ObjectId
     try:
         return await files_col.find_one({"_id": ObjectId(doc_id)})
     except Exception:

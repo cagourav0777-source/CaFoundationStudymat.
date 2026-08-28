@@ -92,7 +92,7 @@ async def channel_post_listener(client: Client, message: Message):
         message_id=message.id
     )
 
-# ----------------- Admin Command: /index (Batch Method) -----------------
+# ----------------- Admin Command: /index -----------------
 @app.on_message(filters.command("index") & filters.private)
 async def index_channel_handler(client: Client, message: Message):
     if message.from_user.id not in ADMINS:
@@ -142,8 +142,11 @@ async def index_channel_handler(client: Client, message: Message):
                     )
                     count += 1
             
-            if count > 0 and count % 20 == 0:
-                await status_msg.edit_text(f"⏳ **Indexing in progress:** `{count}` files index ho chuki hain...")
+            if count > 0 and count % 50 == 0:
+                try:
+                    await status_msg.edit_text(f"⏳ **Indexing in progress:** `{count}` files index ho chuki hain...")
+                except Exception:
+                    pass
             await asyncio.sleep(0.3)
             
         except FloodWait as e:
@@ -248,10 +251,18 @@ async def send_file_callback(client: Client, query: CallbackQuery):
             from_chat_id=file_info["chat_id"],
             message_id=file_info["message_id"]
         )
-        await query.answer("✅ File send ho gayi!")
+        await query.answer("✅ File send ho rahi hai!")
     except Exception as e:
-        await query.answer("❌ File send karne mein dikkat aayi.", show_alert=True)
-        print(f"Send Error: {e}")
+        try:
+            await client.send_cached_media(
+                chat_id=query.from_user.id,
+                file_id=file_info["file_id"],
+                caption=file_info.get("caption", "")
+            )
+            await query.answer("✅ File send ho rahi hai!")
+        except Exception as err:
+            await query.answer(f"❌ Error: {str(err)}", show_alert=True)
+            print(f"Send Error: {e} | Fallback Error: {err}")
 
 @app.on_callback_query(filters.regex(r"^page_"))
 async def pagination_callback(client: Client, query: CallbackQuery):
@@ -279,6 +290,28 @@ async def pagination_callback(client: Client, query: CallbackQuery):
         
     await query.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(buttons))
     await query.answer()
+
+# ----------------- Inline Search Mode -----------------
+@app.on_inline_query()
+async def inline_query_handler(client: Client, query: InlineQuery):
+    text = query.query.strip()
+    if not text:
+        return
+    
+    results, _ = await search_files(text, limit=10)
+    inline_results = []
+    
+    for item in results:
+        if item.get("file_id"):
+            inline_results.append(
+                InlineQueryResultCachedDocument(
+                    title=item["file_name"],
+                    file_id=item["file_id"],
+                    caption=item.get("caption", "")
+                )
+            )
+            
+    await query.answer(inline_results, cache_time=5)
 
 # ----------------- Main Execution -----------------
 if __name__ == "__main__":

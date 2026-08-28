@@ -5,7 +5,7 @@ from pyrogram.types import (
     CallbackQuery, InlineQuery, InlineQueryResultCachedDocument
 )
 from pyrogram.errors import UserNotParticipant, FloodWait
-from config import API_ID, API_HASH, BOT_TOKEN, ADMINS, CHANNEL_ID, FSUB_CHATS
+from config import API_ID, API_HASH, BOT_TOKEN, ADMINS, CHANNEL_ID, GROUP_ID, FSUB_CHATS
 from database import (
     init_db, add_user, get_all_users, count_users, 
     save_file, search_files, count_files
@@ -13,11 +13,11 @@ from database import (
 
 app = Client("notes_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
-# ----------------- Helper: Direct Channel Post Link Generator -----------------
+# ----------------- Helper: Direct Channel Post Link -----------------
 def get_post_link(chat_id, message_id: int):
     chat_str = str(chat_id)
     if chat_str.startswith("-100"):
-        internal_id = chat_str[4:]  # -100 remove karta hai
+        internal_id = chat_str[4:]
         return f"https://t.me/c/{internal_id}/{message_id}"
     elif chat_str.startswith("@"):
         username = chat_str[1:]
@@ -63,14 +63,18 @@ async def start_handler(client: Client, message: Message):
     
     await message.reply_text(
         f"👋 Namaste **{message.from_user.first_name}**!\n\n"
-        "📚 Main is Channel ka Official Notes Search Bot hoon.\n\n"
+        "📚 Main is Channel & Group ka Official Notes Search Bot hoon.\n\n"
         "🔍 **Notes Kaise Payein:**\n"
         "Bas kisi bhi subject, teacher ya chapter ka naam likhkar send karein (e.g. `Hardik sir`, `Mv sir`, `Economics`)."
     )
 
-@app.on_message(filters.command("id") & filters.private)
+# /id Command: DM ya Group dono mein ID batayega
+@app.on_message(filters.command("id"))
 async def get_my_id(client: Client, message: Message):
-    await message.reply_text(f"👤 **Aapki Telegram User ID:** `{message.from_user.id}`")
+    if message.chat.type == enums.ChatType.PRIVATE:
+        await message.reply_text(f"👤 **Aapki User ID:** `{message.from_user.id}`")
+    else:
+        await message.reply_text(f"👥 **Is Group ki Chat ID:** `{message.chat.id}`")
 
 # ----------------- Force Sub Verification Callback -----------------
 @app.on_callback_query(filters.regex("^check_fsub_again$"))
@@ -202,9 +206,9 @@ async def broadcast_handler(client: Client, message: Message):
         f"🔴 Failed: `{failed}`"
     )
 
-# ----------------- DM Search System (Direct Post Links) -----------------
+# ----------------- 1. DM Search Handler -----------------
 @app.on_message(filters.text & filters.private & ~filters.command(["start", "index", "stats", "broadcast", "id"]))
-async def search_handler(client: Client, message: Message):
+async def dm_search_handler(client: Client, message: Message):
     user_id = message.from_user.id
     unsubbed = await check_fsub(client, user_id)
     if unsubbed:
@@ -227,7 +231,6 @@ async def search_handler(client: Client, message: Message):
     buttons = []
     for item in results:
         name = item["file_name"][:38] + ("..." if len(item["file_name"]) > 38 else "")
-        # Direct URL link jo seedha channel ke usi post par le jayega
         post_link = get_post_link(item.get("chat_id", CHANNEL_ID), item["message_id"])
         buttons.append([InlineKeyboardButton(f"📄 {name}", url=post_link)])
     
@@ -236,6 +239,47 @@ async def search_handler(client: Client, message: Message):
     
     await message.reply_text(
         f"🔍 **Search Results for:** `{query_text}`\n📊 Total Files: **{total}**\n\nNiche click karke direct channel post par jayein:",
+        reply_markup=InlineKeyboardMarkup(buttons)
+    )
+
+# ----------------- 2. Group Search Handler (Sirf Aapke GROUP_ID mein chalega) -----------------
+@app.on_message(filters.chat(GROUP_ID) & filters.text)
+async def group_search_handler(client: Client, message: Message):
+    text = message.text.strip()
+    
+    # Agar member ne /search ya /notes use kiya
+    is_command = False
+    if text.startswith("/search") or text.startswith("/notes") or text.startswith("/get"):
+        is_command = True
+        parts = text.split(" ", 1)
+        if len(parts) < 2 or len(parts.strip()) < 2:
+            return await message.reply_text("❗ Usage: `/search topic_name` (e.g. `/search hardik sir`)")
+        query_text = parts.strip()
+    else:
+        # Normal chat query (ignore common greetings)
+        if len(text) < 3 or text.lower() in ["hi", "hello", "gm", "gn", "ok", "thanks", "bye"]:
+            return
+        query_text = text
+    
+    results, total = await search_files(query_text, limit=5, skip=0)
+    
+    # Agar command se search kiya tha aur nahi mila to batayega
+    if not results:
+        if is_command:
+            await message.reply_text(f"❌ **'{query_text}'** ke related koi notes nahi mile.")
+        return
+    
+    buttons = []
+    for item in results:
+        name = item["file_name"][:35] + ("..." if len(item["file_name"]) > 35 else "")
+        post_link = get_post_link(item.get("chat_id", CHANNEL_ID), item["message_id"])
+        buttons.append([InlineKeyboardButton(f"📄 {name}", url=post_link)])
+    
+    if total > 5:
+        buttons.append([InlineKeyboardButton("Next Page ⏩", callback_data=f"page_1_{query_text}")])
+    
+    await message.reply_text(
+        f"📚 **Results for {message.from_user.mention}:** `{query_text}` (Total: {total})\nNiche click karke post dekhein:",
         reply_markup=InlineKeyboardMarkup(buttons)
     )
 

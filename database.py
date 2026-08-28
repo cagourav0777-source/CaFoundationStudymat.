@@ -31,7 +31,7 @@ async def get_fsub_status() -> bool:
         return doc.get("enabled", False)
     return False
 
-# ----------------- User & Group Functions -----------------
+# ----------------- User Functions -----------------
 async def add_user(user_id: int, name: str):
     try:
         await users_col.update_one(
@@ -48,6 +48,7 @@ async def get_all_users():
 async def count_users():
     return await users_col.count_documents({})
 
+# ----------------- Group Functions -----------------
 async def add_group(chat_id: int, title: str):
     try:
         await groups_col.update_one(
@@ -57,6 +58,9 @@ async def add_group(chat_id: int, title: str):
         )
     except Exception:
         pass
+
+async def get_all_groups():
+    return [doc["chat_id"] async for doc in groups_col.find({})]
 
 async def count_groups():
     return await groups_col.count_documents({})

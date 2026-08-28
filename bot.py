@@ -3,14 +3,14 @@ import re
 from pyrogram import Client, filters, enums
 from pyrogram.types import (
     Message, InlineKeyboardMarkup, InlineKeyboardButton, 
-    CallbackQuery, InlineQuery, InlineQueryResultCachedDocument
+    CallbackQuery, InlineQuery, InlineQueryResultCachedDocument, ChatMemberUpdated
 )
 from pyrogram.errors import UserNotParticipant, FloodWait
 from config import API_ID, API_HASH, BOT_TOKEN, ADMINS, CHANNEL_ID, FSUB_CHATS
 from database import (
     init_db, add_user, get_all_users, count_users, 
-    add_group, count_groups, save_file, search_files, 
-    count_files, set_fsub_status, get_fsub_status
+    add_group, get_all_groups, count_groups, save_file, 
+    search_files, count_files, set_fsub_status, get_fsub_status
 )
 
 app = Client("notes_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
@@ -120,13 +120,23 @@ def get_fsub_keyboard(unsubbed_list):
     buttons.append([InlineKeyboardButton("🔄 Verify / Try Again", callback_data="check_fsub_again")])
     return InlineKeyboardMarkup(buttons)
 
-# ----------------- 🌟 /start Command & Deep-Link Delivery -----------------
+# ----------------- Auto Group Add Detector -----------------
+@app.on_chat_member_updated()
+async def on_bot_added(client: Client, chat_member: ChatMemberUpdated):
+    if chat_member.new_chat_member and chat_member.new_chat_member.user.is_self:
+        chat = chat_member.chat
+        if chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
+            await add_group(chat.id, chat.title or "Group")
+            print(f"👥 Bot added to Group: {chat.title} ({chat.id})")
+
+# ----------------- 🌟 /start Command & Deep-Link Delivery (100% Fixed) -----------------
 @app.on_message(filters.command("start") & filters.private)
 async def start_handler(client: Client, message: Message):
     user_id = message.from_user.id
     first_name = message.from_user.first_name or "Aspirant"
     await add_user(user_id, first_name)
     
+    # Check FSUB
     unsubbed = await check_fsub(client, user_id)
     if unsubbed:
         return await message.reply_text(
@@ -134,20 +144,25 @@ async def start_handler(client: Client, message: Message):
             reply_markup=get_fsub_keyboard(unsubbed)
         )
     
-    # Deep Link Handler: Group click se jab user yahan aayega to file deliver hogi
-    if len(message.command) > 1 and message.command.startswith("get_"):
-        try:
-            prefix, msg_id_str = message.command.split("_", 1)
-            msg_id = int(msg_id_str)
-            await client.copy_message(
-                chat_id=user_id,
-                from_chat_id=CHANNEL_ID,
-                message_id=msg_id
-            )
-            return
-        except Exception as e:
-            print(f"Deep link error: {e}")
-            return await message.reply_text(f"❌ Error delivering file: {str(e)}")
+    # Check if user clicked from group deep-link (e.g. /start get_12345)
+    text = message.text.strip()
+    if " " in text:
+        parts = text.split()
+        if len(parts) > 1:
+            param = parts.strip()
+            if param.startswith("get_"):
+                try:
+                    msg_id_str = param.replace("get_", "")
+                    msg_id = int(msg_id_str)
+                    await client.copy_message(
+                        chat_id=user_id,
+                        from_chat_id=CHANNEL_ID,
+                        message_id=msg_id
+                    )
+                    return
+                except Exception as e:
+                    print(f"Deep link send error: {e}")
+                    return await message.reply_text(f"❌ Error delivering file: {str(e)}")
     
     welcome_text = (
         f"✨ **𝐖𝐄𝐋𝐂𝐎𝐌𝐄 𝐓𝐎 𝐂𝐀 𝐍𝐎𝐓𝐄𝐒 𝐌𝐀𝐒𝐓𝐄𝐑** ✨\n"
@@ -285,9 +300,9 @@ async def index_channel_handler(client: Client, message: Message):
             print(f"Batch error: {e}")
             continue
             
-    await status_msg.edit_text(f"✅ **Indexing Complete!**\nTotal **{count}** materials are saved in the database.")
+    await status_msg.edit_text(f"✅ **Indexing Complete!**\nTotal **{count}** materials (PDFs, Photos & Links) are saved in the database.")
 
-# ----------------- Admin Command: /stats (Tracks Groups Too) -----------------
+# ----------------- Admin Command: /stats -----------------
 @app.on_message(filters.command("stats") & filters.private)
 async def stats_handler(client: Client, message: Message):
     if message.from_user.id not in ADMINS:
@@ -316,17 +331,26 @@ async def broadcast_handler(client: Client, message: Message):
     if not message.reply_to_message and len(message.command) < 2:
         return await message.reply_text(
             "❗ **Broadcast Kaise Karein:**\n\n"
-            "1️⃣ Kisi bhi message ko **Reply** karke `/broadcast` likhein.\n"
+            "1️⃣ Kisi bhi message/photo/video ko **Reply** karke `/broadcast` likhein.\n"
             "2️⃣ YA direct likhein: `/broadcast Aapka message`"
         )
     
     users = await get_all_users()
-    if not users:
-        return await message.reply_text("❌ Database mein koi users nahi hain.")
+    groups = await get_all_groups()
     
-    status_msg = await message.reply_text(f"📢 **Broadcast shuru:** `{len(users)}` users...")
-    success, failed = 0, 0
+    if not users and not groups:
+        return await message.reply_text("❌ Database mein koi users ya groups nahi hain.")
     
+    status_msg = await message.reply_text(
+        f"📢 **Broadcast Shuru Ho Raha Hai...**\n\n"
+        f"👥 Target Users: `{len(users)}`\n"
+        f"💬 Target Groups: `{len(groups)}`"
+    )
+    
+    u_success, u_failed = 0, 0
+    g_success, g_failed = 0, 0
+    
+    # 1. Users DM
     for u_id in users:
         try:
             if message.reply_to_message:
@@ -334,18 +358,35 @@ async def broadcast_handler(client: Client, message: Message):
             else:
                 broadcast_text = message.text.split(" ", 1)
                 await client.send_message(chat_id=u_id, text=broadcast_text)
-            success += 1
+            u_success += 1
             await asyncio.sleep(0.04)
         except FloodWait as e:
             await asyncio.sleep(e.value)
         except Exception:
-            failed += 1
+            u_failed += 1
+            
+    # 2. Groups
+    for g_id in groups:
+        try:
+            if message.reply_to_message:
+                await message.reply_to_message.copy(chat_id=g_id)
+            else:
+                broadcast_text = message.text.split(" ", 1)
+                await client.send_message(chat_id=g_id, text=broadcast_text)
+            g_success += 1
+            await asyncio.sleep(0.04)
+        except FloodWait as e:
+            await asyncio.sleep(e.value)
+        except Exception:
+            g_failed += 1
             
     await status_msg.edit_text(
         f"✅ **Broadcast Completed!**\n\n"
-        f"🟢 **Delivered:** `{success}`\n"
-        f"🔴 **Failed / Blocked:** `{failed}`\n"
-        f"👥 **Total Targeted:** `{len(users)}`"
+        f"👤 **Users (DM):**\n"
+        f"  • Sent: `{u_success}` | Failed: `{u_failed}`\n\n"
+        f"💬 **Groups:**\n"
+        f"  • Sent: `{g_success}` | Failed: `{g_failed}`\n\n"
+        f"📊 **Total Delivered:** `{u_success + g_success}`"
     )
 
 # ----------------- 1. DM Search Handler -----------------
@@ -383,15 +424,14 @@ async def dm_search_handler(client: Client, message: Message):
         reply_markup=InlineKeyboardMarkup(buttons)
     )
 
-# ----------------- 2. 🌍 Universal Group Search Handler (Har Group Mein Kaam Karega) -----------------
+# ----------------- 2. Universal Group Search Handler -----------------
 @app.on_message(filters.group & filters.text)
 async def group_search_handler(client: Client, message: Message):
-    # Track the group in database
     await add_group(message.chat.id, message.chat.title or "Group")
     
     text = message.text.strip()
-    
     is_command = False
+    
     if text.startswith("/search") or text.startswith("/notes") or text.startswith("/get"):
         is_command = True
         if " " not in text:
@@ -401,7 +441,6 @@ async def group_search_handler(client: Client, message: Message):
         if len(query_text) < 2:
             return await message.reply_text("❗ Please type at least 2 characters.")
     else:
-        # Ignore common chat words
         if len(text) < 3 or text.lower() in ["hi", "hello", "gm", "gn", "ok", "thanks", "bye", "hlo", "yes", "no"]:
             return
         query_text = text
@@ -417,12 +456,11 @@ async def group_search_handler(client: Client, message: Message):
     buttons = []
     for item in results:
         display_name = get_display_title(item)
-        # Deep Link: User click karega to bot ke DM me file deliver hogi
         deep_link = f"https://t.me/{bot_username}?start=get_{item['message_id']}"
         buttons.append([InlineKeyboardButton(display_name, url=deep_link)])
     
     await message.reply_text(
-        f"📚 **Results for {message.from_user.mention}:** `{query_text}` (Total: {total})\nTap any button below to get the file in your DM:",
+        f"📚 **Results for {message.from_user.mention}:** `{query_text}` (Total: {total})\nTap below to get the file in your DM:",
         reply_markup=InlineKeyboardMarkup(buttons)
     )
 

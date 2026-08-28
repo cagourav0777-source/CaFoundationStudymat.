@@ -8,17 +8,16 @@ from pyrogram.errors import UserNotParticipant, FloodWait
 from config import API_ID, API_HASH, BOT_TOKEN, ADMINS, CHANNEL_ID, GROUP_ID, FSUB_CHATS
 from database import (
     init_db, add_user, get_all_users, count_users, 
-    save_file, search_files, count_files
+    save_file, search_files, count_files, set_fsub_status, get_fsub_status
 )
 
 app = Client("notes_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
-# ----------------- Helper: Smart Button Title (Caption > File Name) -----------------
+# ----------------- Helper: Smart Button Title -----------------
 def get_display_title(item):
     caption = item.get("caption", "").strip()
     file_name = item.get("file_name", "").strip()
     
-    # Agar Caption hai toh pehli line ko title banayega
     if caption:
         first_line = caption.split("\n")[0].strip()
         if len(first_line) > 2:
@@ -28,13 +27,17 @@ def get_display_title(item):
     else:
         title = file_name or "Study Material"
     
-    # Mobile screen ke button format ke hisaab se clean limit
     if len(title) > 38:
         return title[:38] + "..."
     return title
 
-# ----------------- Force Subscribe Helpers -----------------
+# ----------------- Force Subscribe Helpers (Dynamic ON/OFF) -----------------
 async def check_fsub(client: Client, user_id: int):
+    # Check if FSUB is currently enabled in settings
+    is_fsub_active = await get_fsub_status()
+    if not is_fsub_active:
+        return []  # FSUB OFF hai, sabko allow karega
+    
     unsubbed = []
     for item in FSUB_CHATS:
         chat = item["chat"]
@@ -105,6 +108,30 @@ async def get_my_id(client: Client, message: Message):
         await message.reply_text(f"👤 **Your Telegram User ID:** `{message.from_user.id}`")
     else:
         await message.reply_text(f"👥 **Group Chat ID:** `{message.chat.id}`")
+
+# ----------------- Admin Commands: /startfsub & /stopfsub -----------------
+@app.on_message(filters.command(["startfsub", "stopfsub", "fsub"]) & filters.private)
+async def fsub_toggle_handler(client: Client, message: Message):
+    if message.from_user.id not in ADMINS:
+        return await message.reply_text("❌ Sirf Admin is setting ko change kar sakte hain.")
+    
+    cmd = message.command[0].lower()
+    arg = message.command.lower() if len(message.command) > 1 else ""
+    
+    if cmd == "startfsub" or arg == "on":
+        await set_fsub_status(True)
+        await message.reply_text("✅ **Force Subscribe (FSUB) is now turned ON!**\n\nAb users ko bot use karne se pehle channels join karne padenge.")
+    elif cmd == "stopfsub" or arg == "off":
+        await set_fsub_status(False)
+        await message.reply_text("🟢 **Force Subscribe (FSUB) is now turned OFF!**\n\nAb koi bhi user bina channel join kiye directly bot use kar sakta hai (Growth Mode Active 🚀).")
+    else:
+        status = await get_fsub_status()
+        status_text = "🟢 **ON (Active)**" if status else "🔴 **OFF (Disabled - Free Access)**"
+        await message.reply_text(
+            f"⚙️ **Current FSUB Status:** {status_text}\n\n"
+            "• Turn ON: `/startfsub` ya `/fsub on`\n"
+            "• Turn OFF: `/stopfsub` ya `/fsub off`"
+        )
 
 # ----------------- Force Sub Verification Callback -----------------
 @app.on_callback_query(filters.regex("^check_fsub_again$"))
@@ -204,10 +231,14 @@ async def stats_handler(client: Client, message: Message):
     
     u_count = await count_users()
     f_count = await count_files()
+    fsub_status = await get_fsub_status()
+    fsub_text = "🟢 Active" if fsub_status else "🔴 Inactive (Growth Mode)"
+    
     await message.reply_text(
         "📊 **Bot Statistics:**\n\n"
         f"👥 **Total Users:** `{u_count}`\n"
-        f"📁 **Total Indexed Files:** `{f_count}`"
+        f"📁 **Total Indexed Files:** `{f_count}`\n"
+        f"🔒 **Force Subscribe:** `{fsub_text}`"
     )
 
 # ----------------- Admin Command: /broadcast -----------------
@@ -236,8 +267,8 @@ async def broadcast_handler(client: Client, message: Message):
         f"🔴 Failed: `{failed}`"
     )
 
-# ----------------- 1. DM Search Handler (Caption Priority) -----------------
-@app.on_message(filters.text & filters.private & ~filters.command(["start", "index", "stats", "broadcast", "id"]))
+# ----------------- 1. DM Search Handler -----------------
+@app.on_message(filters.text & filters.private & ~filters.command(["start", "index", "stats", "broadcast", "id", "startfsub", "stopfsub", "fsub"]))
 async def dm_search_handler(client: Client, message: Message):
     user_id = message.from_user.id
     unsubbed = await check_fsub(client, user_id)
@@ -265,7 +296,6 @@ async def dm_search_handler(client: Client, message: Message):
     
     buttons = []
     for item in results:
-        # Caption-first smart title
         display_name = get_display_title(item)
         buttons.append([InlineKeyboardButton(f"📄 {display_name}", callback_data=f"get_{item['message_id']}")])
     
@@ -277,7 +307,7 @@ async def dm_search_handler(client: Client, message: Message):
         reply_markup=InlineKeyboardMarkup(buttons)
     )
 
-# ----------------- 2. Group Search Handler (Caption Priority) -----------------
+# ----------------- 2. Group Search Handler -----------------
 @app.on_message(filters.chat(GROUP_ID) & filters.text)
 async def group_search_handler(client: Client, message: Message):
     text = message.text.strip()
@@ -333,7 +363,7 @@ async def send_file_callback(client: Client, query: CallbackQuery):
         print(f"Send File Error: {e}")
         await query.answer("❌ File send nahi ho saki! Pehle bot ke DM mein jakar /start karein.", show_alert=True)
 
-# ----------------- Pagination Callback (Caption Priority) -----------------
+# ----------------- Pagination Callback -----------------
 @app.on_callback_query(filters.regex(r"^page_"))
 async def pagination_callback(client: Client, query: CallbackQuery):
     try:

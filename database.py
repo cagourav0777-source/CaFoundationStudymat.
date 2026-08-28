@@ -27,7 +27,7 @@ async def get_fsub_status() -> bool:
     doc = await settings_col.find_one({"key": "fsub_status"})
     if doc:
         return doc.get("enabled", False)
-    return False
+    return False  # Default OFF hai bot growth ke liye
 
 # ----------------- User Functions -----------------
 async def add_user(user_id: int, name: str):
@@ -46,8 +46,8 @@ async def get_all_users():
 async def count_users():
     return await users_col.count_documents({})
 
-# ----------------- Universal Save File (PDFs, Photos, Links) -----------------
-async def save_file(file_id: str, file_name: str, file_size: int, caption: str, chat_id: int, message_id: int, media_type: str = "document"):
+# ----------------- File Functions -----------------
+async def save_file(file_id: str, file_name: str, file_size: int, caption: str, chat_id: int, message_id: int):
     try:
         data = {
             "file_id": file_id,
@@ -55,8 +55,7 @@ async def save_file(file_id: str, file_name: str, file_size: int, caption: str, 
             "file_size": file_size,
             "caption": caption,
             "chat_id": chat_id,
-            "message_id": message_id,
-            "media_type": media_type
+            "message_id": message_id
         }
         await files_col.update_one(
             {"chat_id": chat_id, "message_id": message_id},

@@ -225,28 +225,31 @@ async def search_handler(client: Client, message: Message):
         reply_markup=InlineKeyboardMarkup(buttons)
     )
 
-# ----------------- Direct File Delivery Callback -----------------
+# ----------------- Direct File Delivery Callback (100% Fixed) -----------------
 @app.on_callback_query(filters.regex(r"^get_"))
 async def send_file_callback(client: Client, query: CallbackQuery):
     try:
-        msg_id = int(query.data.split("_", 1))
+        # Callback data split karke index 1 se integer ID extract karna
+        data_parts = query.data.split("_")
+        msg_id = int(data_parts)
         
         await client.copy_message(
             chat_id=query.from_user.id,
             from_chat_id=CHANNEL_ID,
             message_id=msg_id
         )
-        await query.answer("✅ File send ho gayi!")
+        await query.answer("✅ File bhej di gayi hai!")
     except Exception as e:
         await query.answer(f"❌ Error: {str(e)}", show_alert=True)
         print(f"Send Error: {e}")
 
-# ----------------- Pagination Callback -----------------
+# ----------------- Pagination Callback (100% Fixed) -----------------
 @app.on_callback_query(filters.regex(r"^page_"))
 async def pagination_callback(client: Client, query: CallbackQuery):
     try:
-        _, page_str, query_text = query.data.split("_", 2)
-        page = int(page_str)
+        data_parts = query.data.split("_", 2)
+        page = int(data_parts)
+        query_text = data_parts
         limit = 6
         skip = page * limit
         

@@ -386,7 +386,7 @@ async def broadcast_handler(client: Client, message: Message):
         f"📊 **Total Delivered:** `{u_success + g_success}`"
     )
 
-# ----------------- 1. DM Search Handler (Normal Text Allowed in DM) -----------------
+# ----------------- 1. DM Search Handler (With Next Page Button) -----------------
 @app.on_message(filters.text & filters.private & ~filters.command(["start", "index", "stats", "broadcast", "id", "startfsub", "stopfsub", "fsub"]))
 async def dm_search_handler(client: Client, message: Message):
     user_id = message.from_user.id
@@ -413,6 +413,7 @@ async def dm_search_handler(client: Client, message: Message):
         display_name = get_display_title(item)
         buttons.append([InlineKeyboardButton(display_name, callback_data=f"get_{item['message_id']}")])
     
+    # ⏩ Next Page button agar 6 se zyada files hon
     if total > 6:
         buttons.append([InlineKeyboardButton("Next Page ⏩", callback_data=f"page_1_{query_text}")])
     
@@ -421,15 +422,13 @@ async def dm_search_handler(client: Client, message: Message):
         reply_markup=InlineKeyboardMarkup(buttons)
     )
 
-# ----------------- 2. 🔇 STRICT Group Search (ZERO SPAM - Command Only) -----------------
+# ----------------- 2. Group Search Handler (With Next Page Button Included) -----------------
 @app.on_message(filters.group & filters.text)
 async def group_search_handler(client: Client, message: Message):
-    # Har message par group ko database mein register karega
     await add_group(message.chat.id, message.chat.title or "Group")
     
     text = message.text.strip()
     
-    # 🔒 STRICT CHECK: Agar message /search ya /notes se start NAHI hota, toh 100% IGNORE karega (Zero Spam)
     if not (text.startswith("/search") or text.startswith("/notes") or text.startswith("/get")):
         return
     
@@ -443,12 +442,12 @@ async def group_search_handler(client: Client, message: Message):
     query_text = query_text.strip()
     
     if len(query_text) < 2:
-        return await message.reply_text("❗ Kripya kam se kam 2 akshar likhein.")
+        return await message.reply_text("❗ Please type at least 2 characters.")
     
     results, total = await search_files(query_text, limit=6, skip=0)
     
     if not results:
-        return await message.reply_text(f"❌ **'{query_text}'** ke related koi notes nahi mile.")
+        return await message.reply_text(f"❌ No notes found for `{query_text}`.")
     
     bot_username = (await client.get_me()).username
     buttons = []
@@ -457,12 +456,16 @@ async def group_search_handler(client: Client, message: Message):
         deep_link = f"https://t.me/{bot_username}?start=get_{item['message_id']}"
         buttons.append([InlineKeyboardButton(display_name, url=deep_link)])
     
+    # ⏩ Next Page button Group search ke liye
+    if total > 6:
+        buttons.append([InlineKeyboardButton("Next Page ⏩", callback_data=f"page_1_{query_text}")])
+    
     await message.reply_text(
         f"📚 **Search Results for {message.from_user.mention}:** `{query_text}` (Total: {total})\nTap any button below to get the file in your DM:",
         reply_markup=InlineKeyboardMarkup(buttons)
     )
 
-# ----------------- Direct Delivery Callback (DM Only) -----------------
+# ----------------- Direct File Delivery Callback (DM Only) -----------------
 @app.on_callback_query(filters.regex(r"^get_"))
 async def send_file_callback(client: Client, query: CallbackQuery):
     try:
@@ -480,7 +483,7 @@ async def send_file_callback(client: Client, query: CallbackQuery):
         print(f"Send Error: {err_str}")
         await query.answer(f"❌ Error: {err_str[:60]}", show_alert=True)
 
-# ----------------- Pagination Callback -----------------
+# ----------------- 🔄 Full Pagination Callback (DM & Group Supported) -----------------
 @app.on_callback_query(filters.regex(r"^page_"))
 async def pagination_callback(client: Client, query: CallbackQuery):
     try:
@@ -493,10 +496,18 @@ async def pagination_callback(client: Client, query: CallbackQuery):
         if not results:
             return await query.answer("No more results available.", show_alert=True)
         
+        # Check karega ki click group mein hua hai ya DM mein
+        is_group = query.message.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]
+        bot_username = (await client.get_me()).username
+        
         buttons = []
         for item in results:
             display_name = get_display_title(item)
-            buttons.append([InlineKeyboardButton(display_name, callback_data=f"get_{item['message_id']}")])
+            if is_group:
+                deep_link = f"https://t.me/{bot_username}?start=get_{item['message_id']}"
+                buttons.append([InlineKeyboardButton(display_name, url=deep_link)])
+            else:
+                buttons.append([InlineKeyboardButton(display_name, callback_data=f"get_{item['message_id']}")])
         
         nav = []
         if page > 0:
@@ -509,6 +520,7 @@ async def pagination_callback(client: Client, query: CallbackQuery):
         await query.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(buttons))
         await query.answer()
     except Exception as e:
+        print(f"Pagination Error: {e}")
         await query.answer(f"Error: {str(e)}", show_alert=True)
 
 # ----------------- Inline Search Mode -----------------

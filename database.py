@@ -31,7 +31,7 @@ async def get_fsub_status() -> bool:
         return doc.get("enabled", False)
     return False
 
-# ----------------- User Functions -----------------
+# ----------------- User & Group Functions -----------------
 async def add_user(user_id: int, name: str):
     try:
         await users_col.update_one(
@@ -48,7 +48,6 @@ async def get_all_users():
 async def count_users():
     return await users_col.count_documents({})
 
-# ----------------- Group Functions -----------------
 async def add_group(chat_id: int, title: str):
     try:
         await groups_col.update_one(
@@ -87,14 +86,16 @@ async def save_file(file_id: str, file_name: str, file_size: int, caption: str, 
         print(f"DB Save Error: {e}")
         return False
 
+# ----------------- 🔍 Smart Search Algorithm (Zero Missed Files) -----------------
 async def search_files(query: str, limit: int = 6, skip: int = 0):
-    clean_query = re.sub(r'[^\w\s]', ' ', query)
+    clean_query = re.sub(r'[^\w\s]', ' ', query).strip()
     words = [w.strip() for w in clean_query.split() if len(w.strip()) > 1]
     
     if not words:
         words = [query.strip()]
         
-    regex_queries = [
+    # 1. Strict Search (Saare words match karne ki koshish karega)
+    regex_and = [
         {
             "$or": [
                 {"file_name": {"$regex": re.escape(w), "$options": "i"}},
@@ -103,13 +104,36 @@ async def search_files(query: str, limit: int = 6, skip: int = 0):
         }
         for w in words
     ]
+    filter_and = {"$and": regex_and} if regex_and else {}
+    total_and = await files_col.count_documents(filter_and)
     
-    filter_query = {"$and": regex_queries} if regex_queries else {}
+    if total_and > 0:
+        cursor = files_col.find(filter_and).sort("message_id", -1).skip(skip).limit(limit)
+        results = [doc async for doc in cursor]
+        return results, total_and
     
-    total = await files_col.count_documents(filter_query)
-    cursor = files_col.find(filter_query).skip(skip).limit(limit)
+    # 2. Smart Fallback (Agar 'sir' ya 'notes' ki wajah se file miss ho rahi ho, to main keyword se search karega)
+    ignore_words = {"sir", "mam", "notes", "pdf", "book", "for", "by", "ka", "ki", "ke", "all"}
+    primary_words = [w for w in words if len(w) >= 3 and w.lower() not in ignore_words]
+    
+    if not primary_words:
+        primary_words = words
+        
+    regex_or = [
+        {
+            "$or": [
+                {"file_name": {"$regex": re.escape(w), "$options": "i"}},
+                {"caption": {"$regex": re.escape(w), "$options": "i"}}
+            ]
+        }
+        for w in primary_words
+    ]
+    filter_or = {"$or": regex_or} if regex_or else {}
+    total_or = await files_col.count_documents(filter_or)
+    
+    cursor = files_col.find(filter_or).sort("message_id", -1).skip(skip).limit(limit)
     results = [doc async for doc in cursor]
-    return results, total
+    return results, total_or
 
 async def get_file_by_id(doc_id: str):
     try:

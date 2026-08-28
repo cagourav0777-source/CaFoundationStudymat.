@@ -53,10 +53,27 @@ async def save_file(file_id: str, file_name: str, file_size: int, caption: str, 
         print(f"Error saving file: {e}")
         return False
 
-async def search_files(query: str, limit: int = 10, skip: int = 0):
-    words = query.strip().split()
-    # Case-insensitive matching for each word
-    regex_queries = [{"file_name": {"$regex": re.escape(w), "$options": "i"}} for w in words]
+import re
+
+async def search_files(query: str, limit: int = 6, skip: int = 0):
+    # Emojis aur special symbols ko clean karna taaki exact words match hon
+    clean_query = re.sub(r'[^\w\s]', ' ', query)
+    words = [w.strip() for w in clean_query.split() if len(w.strip()) > 1]
+    
+    if not words:
+        words = [query.strip()]
+        
+    # File Name YA Caption dono mein match karega
+    regex_queries = [
+        {
+            "$or": [
+                {"file_name": {"$regex": re.escape(w), "$options": "i"}},
+                {"caption": {"$regex": re.escape(w), "$options": "i"}}
+            ]
+        }
+        for w in words
+    ]
+    
     filter_query = {"$and": regex_queries} if regex_queries else {}
     
     total = await files_col.count_documents(filter_query)

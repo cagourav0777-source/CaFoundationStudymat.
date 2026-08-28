@@ -2,8 +2,7 @@ import asyncio
 from pyrogram import Client, filters, enums
 from pyrogram.types import (
     Message, InlineKeyboardMarkup, InlineKeyboardButton, 
-    CallbackQuery, InlineQuery, InlineQueryResultCachedDocument, 
-    InlineQueryResultArticle, InputTextMessageContent
+    CallbackQuery, InlineQuery, InlineQueryResultCachedDocument
 )
 from pyrogram.errors import UserNotParticipant, FloodWait
 from config import API_ID, API_HASH, BOT_TOKEN, ADMINS, CHANNEL_ID, FSUB_CHATS
@@ -12,9 +11,9 @@ from database import (
     save_file, search_files, get_file_by_id, count_files
 )
 
-app = Client("notes_search_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
+app = Client("notes_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
-# Helper: Check Force Subscribe
+# ----------------- Force Subscribe Helpers -----------------
 async def check_fsub(client: Client, user_id: int):
     unsubbed = []
     for item in FSUB_CHATS:
@@ -26,7 +25,6 @@ async def check_fsub(client: Client, user_id: int):
         except UserNotParticipant:
             unsubbed.append(item)
         except Exception:
-            # Agar bot admin nahi hai ya private chat access issue ho
             continue
     return unsubbed
 
@@ -35,10 +33,10 @@ def get_fsub_keyboard(unsubbed_list):
     for item in unsubbed_list:
         link = f"https://t.me/{item['chat'].replace('@', '')}"
         buttons.append([InlineKeyboardButton(f"Join {item['name']}", url=link)])
-    buttons.append([InlineKeyboardButton("🔄 Try Again / Refresh", callback_data="check_fsub_again")])
+    buttons.append([InlineKeyboardButton("🔄 Verify / Try Again", callback_data="check_fsub_again")])
     return InlineKeyboardMarkup(buttons)
 
-# Start Command
+# ----------------- Basic Commands -----------------
 @app.on_message(filters.command("start") & filters.private)
 async def start_handler(client: Client, message: Message):
     user_id = message.from_user.id
@@ -47,30 +45,33 @@ async def start_handler(client: Client, message: Message):
     unsubbed = await check_fsub(client, user_id)
     if unsubbed:
         return await message.reply_text(
-            "⚠️ **Access Denied!**\n\nBot ko use karne ke liye pehle hamare official channels aur group ko join karein:",
+            "⚠️ **Access Denied!**\n\nBot ko use karne ke liye pehle hamare official channels ko join karein:",
             reply_markup=get_fsub_keyboard(unsubbed)
         )
     
     await message.reply_text(
         f"👋 Namaste **{message.from_user.first_name}**!\n\n"
-        "📚 Main Notes & Study Material Search Bot hoon.\n"
-        "Aapko jo bhi notes ya question bank chahiye, bas uska **naam type karke send karein**!"
+        "📚 Main is Channel ka Official Notes Search Bot hoon.\n\n"
+        "🔍 **Notes Kaise Payein:**\n"
+        "Bas kisi bhi subject, teacher ya chapter ka naam likhkar send karein (e.g. `Hardik sir`, `Business Economics`)."
     )
 
-# Force Sub Callback Refresh
+@app.on_message(filters.command("id") & filters.private)
+async def get_my_id(client: Client, message: Message):
+    await message.reply_text(f"👤 **Aapki Telegram User ID:** `{message.from_user.id}`")
+
+# ----------------- Force Sub Verification Callback -----------------
 @app.on_callback_query(filters.regex("^check_fsub_again$"))
 async def fsub_callback(client: Client, query: CallbackQuery):
     user_id = query.from_user.id
     unsubbed = await check_fsub(client, user_id)
     if unsubbed:
-        return await query.answer("❌ Aapne abhi tak sabhi channels join nahi kiye hain!", show_alert=True)
+        return await query.answer("❌ Aapne abhi tak dono channels join nahi kiye hain!", show_alert=True)
     
     await query.message.delete()
-    await query.message.reply_text(
-        "✅ **Membership Verified!**\n\nAb aap kisi bhi material ka naam likhkar search kar sakte hain."
-    )
+    await query.message.reply_text("✅ **Access Granted!** Ab aap koi bhi material search kar sakte hain.")
 
-# Real-Time Channel Post Listener (Auto-Save New Files)
+# ----------------- Real-Time Channel Auto-Indexer -----------------
 @app.on_message(filters.chat(CHANNEL_ID) & (filters.document | filters.audio | filters.video | filters.photo))
 async def channel_post_listener(client: Client, message: Message):
     file = message.document or message.audio or message.video or (message.photo and message.photo.file_id)
@@ -91,93 +92,17 @@ async def channel_post_listener(client: Client, message: Message):
         message_id=message.id
     )
 
-# Search Handler (DM Queries)
-@app.on_message(filters.text & filters.private & ~filters.command(["start", "index", "stats", "broadcast"]))
-async def search_handler(client: Client, message: Message):
-    user_id = message.from_user.id
-    unsubbed = await check_fsub(client, user_id)
-    if unsubbed:
-        return await message.reply_text(
-            "⚠️ Bot ko access karne ke liye channels join karna zaroori hai.",
-            reply_markup=get_fsub_keyboard(unsubbed)
-        )
-    
-    query_text = message.text.strip()
-    if len(query_text) < 2:
-        return await message.reply_text("❗ Kripya kam se kam 2 akshar likhkar search karein.")
-    
-    results, total = await search_files(query_text, limit=6, skip=0)
-    if not results:
-        return await message.reply_text(
-            f"❌ **'{query_text}'** ke related koi material nahi mila.\n"
-            "Spelling check karein ya dusre keywords try karein."
-        )
-    
-    buttons = []
-    for item in results:
-        name = item["file_name"][:40] + ("..." if len(item["file_name"]) > 40 else "")
-        buttons.append([InlineKeyboardButton(f"📄 {name}", callback_data=f"get_{str(item['_id'])}")])
-    
-    if total > 6:
-        buttons.append([InlineKeyboardButton("Next Page ⏩", callback_data=f"page_1_{query_text}")])
-    
-    await message.reply_text(
-        f"🔍 **Search Results for:** `{query_text}`\n📊 Total Files Found: **{total}**\n\nNiche click karke file prapt karein:",
-        reply_markup=InlineKeyboardMarkup(buttons)
-    )
-
-# File Delivery Callback Handler
-@app.on_callback_query(filters.regex(r"^get_"))
-async def send_file_callback(client: Client, query: CallbackQuery):
-    doc_id = query.data.split("_")[1]
-    file_info = await get_file_by_id(doc_id)
-    
-    if not file_info:
-        return await query.answer("❌ File nahi mili ya delete ho chuki hai.", show_alert=True)
-    
-    try:
-        await client.copy_message(
-            chat_id=query.from_user.id,
-            from_chat_id=file_info["chat_id"],
-            message_id=file_info["message_id"]
-        )
-        await query.answer("✅ File bhej di gayi hai!")
-    except Exception as e:
-        await query.answer("❌ File send karne mein dikkat aayi.", show_alert=True)
-        print(f"Send error: {e}")
-
-# Pagination Callback Handler
-@app.on_callback_query(filters.regex(r"^page_"))
-async def pagination_callback(client: Client, query: CallbackQuery):
-    _, page_str, query_text = query.data.split("_", 2)
-    page = int(page_str)
-    limit = 6
-    skip = page * limit
-    
-    results, total = await search_files(query_text, limit=limit, skip=skip)
-    if not results:
-        return await query.answer("Aur results nahi hain.", show_alert=True)
-    
-    buttons = []
-    for item in results:
-        name = item["file_name"][:40] + ("..." if len(item["file_name"]) > 40 else "")
-        buttons.append([InlineKeyboardButton(f"📄 {name}", callback_data=f"get_{str(item['_id'])}")])
-    
-    nav = []
-    if page > 0:
-        nav.append(InlineKeyboardButton("⏪ Prev", callback_data=f"page_{page - 1}_{query_text}"))
-    if total > skip + limit:
-        nav.append(InlineKeyboardButton("Next ⏩", callback_data=f"page_{page + 1}_{query_text}"))
-    if nav:
-        buttons.append(nav)
-        
-    await query.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(buttons))
-    await query.answer()
-
-# Admin Command: /index (Scan All Past Files from Channel)
-@app.on_message(filters.command("index") & filters.user(ADMINS))
+# ----------------- Admin Commands -----------------
+@app.on_message(filters.command("index") & filters.private)
 async def index_channel_handler(client: Client, message: Message):
-    status_msg = await message.reply_text("⏳ **Channel indexing shuru ho rahi hai...**")
+    if message.from_user.id not in ADMINS:
+        return await message.reply_text(
+            f"❌ **Aap Admin nahi hain!**\n\n"
+            f"Aapki User ID: `{message.from_user.id}`\n"
+            f"Isko `config.py` mein `ADMINS` list mein add karein."
+        )
+    
+    status_msg = await message.reply_text("⏳ **Aapke channel ki indexing shuru ho rahi hai...**")
     count = 0
     
     try:
@@ -199,16 +124,22 @@ async def index_channel_handler(client: Client, message: Message):
                 )
                 count += 1
                 if count % 20 == 0:
-                    await status_msg.edit_text(f"⏳ **Indexing in progress:** `{count}` files indexed...")
+                    await status_msg.edit_text(f"⏳ **Indexing in progress:** `{count}` files scanned...")
                     await asyncio.sleep(1)
         
-        await status_msg.edit_text(f"✅ **Indexing Complete!**\nTotal **{count}** files database mein save ho gayi hain.")
+        await status_msg.edit_text(f"✅ **Indexing Complete!**\nTotal **{count}** files database mein index ho gayi hain.")
     except Exception as e:
-        await status_msg.edit_text(f"❌ Error while indexing: `{str(e)}`")
+        await status_msg.edit_text(f"❌ **Indexing Error:** `{str(e)}`\n\nCheck karein ki bot channel mein Admin hai ya nahi.")
 
-# Admin Command: /stats
-@app.on_message(filters.command("stats") & filters.user(ADMINS))
+@app.on_message(filters.command("stats") & filters.private)
 async def stats_handler(client: Client, message: Message):
+    if message.from_user.id not in ADMINS:
+        return await message.reply_text(
+            f"❌ **Aap Admin nahi hain!**\n"
+            f"Aapki User ID: `{message.from_user.id}`\n"
+            f"Isko `config.py` mein `ADMINS` list mein add karein."
+        )
+    
     u_count = await count_users()
     f_count = await count_files()
     await message.reply_text(
@@ -217,9 +148,11 @@ async def stats_handler(client: Client, message: Message):
         f"📁 **Total Indexed Files:** `{f_count}`"
     )
 
-# Admin Command: /broadcast
-@app.on_message(filters.command("broadcast") & filters.user(ADMINS) & filters.reply)
+@app.on_message(filters.command("broadcast") & filters.private & filters.reply)
 async def broadcast_handler(client: Client, message: Message):
+    if message.from_user.id not in ADMINS:
+        return await message.reply_text("❌ Sirf Admins broadcast kar sakte hain.")
+    
     users = await get_all_users()
     success, failed = 0, 0
     status_msg = await message.reply_text(f"📢 Broadcast shuru: `{len(users)}` users...")
@@ -236,34 +169,95 @@ async def broadcast_handler(client: Client, message: Message):
             
     await status_msg.edit_text(
         f"✅ **Broadcast Completed!**\n\n"
-        f"🟢 Successful: `{success}`\n"
+        f"🟢 Sent: `{success}`\n"
         f"🔴 Failed: `{failed}`"
     )
 
-# Inline Search Handler (@botname query)
-@app.on_inline_query()
-async def inline_query_handler(client: Client, query: InlineQuery):
-    text = query.query.strip()
-    if not text:
-        return
+# ----------------- DM Search System -----------------
+@app.on_message(filters.text & filters.private & ~filters.command(["start", "index", "stats", "broadcast", "id"]))
+async def search_handler(client: Client, message: Message):
+    user_id = message.from_user.id
+    unsubbed = await check_fsub(client, user_id)
+    if unsubbed:
+        return await message.reply_text(
+            "⚠️ Bot ko access karne ke liye pehle channel join karein.",
+            reply_markup=get_fsub_keyboard(unsubbed)
+        )
     
-    results, _ = await search_files(text, limit=15)
-    inline_results = []
+    query_text = message.text.strip()
+    if len(query_text) < 2:
+        return await message.reply_text("❗ Kripya kam se kam 2 akshar likhein.")
     
+    results, total = await search_files(query_text, limit=6, skip=0)
+    if not results:
+        return await message.reply_text(
+            f"❌ **'{query_text}'** ke related koi material nahi mila.\n"
+            "Spelling check karein ya dusre keywords try karein."
+        )
+    
+    buttons = []
     for item in results:
-        if item.get("file_id"):
-            inline_results.append(
-                InlineQueryResultCachedDocument(
-                    title=item["file_name"],
-                    file_id=item["file_id"],
-                    caption=item.get("caption", "")
-                )
-            )
-            
-    await query.answer(inline_results, cache_time=5)
+        name = item["file_name"][:38] + ("..." if len(item["file_name"]) > 38 else "")
+        buttons.append([InlineKeyboardButton(f"📄 {name}", callback_data=f"get_{str(item['_id'])}")])
+    
+    if total > 6:
+        buttons.append([InlineKeyboardButton("Next Page ⏩", callback_data=f"page_1_{query_text}")])
+    
+    await message.reply_text(
+        f"🔍 **Search Results for:** `{query_text}`\n📊 Total Files: **{total}**\n\nNiche click karke file prapt karein:",
+        reply_markup=InlineKeyboardMarkup(buttons)
+    )
 
+# ----------------- Callback Handlers (File Send & Pagination) -----------------
+@app.on_callback_query(filters.regex(r"^get_"))
+async def send_file_callback(client: Client, query: CallbackQuery):
+    doc_id = query.data.split("_")
+    file_info = await get_file_by_id(doc_id)
+    
+    if not file_info:
+        return await query.answer("❌ File nahi mili ya delete ho chuki hai.", show_alert=True)
+    
+    try:
+        await client.copy_message(
+            chat_id=query.from_user.id,
+            from_chat_id=file_info["chat_id"],
+            message_id=file_info["message_id"]
+        )
+        await query.answer("✅ File send ho gayi!")
+    except Exception as e:
+        await query.answer("❌ File send karne mein dikkat aayi.", show_alert=True)
+        print(f"Send Error: {e}")
+
+@app.on_callback_query(filters.regex(r"^page_"))
+async def pagination_callback(client: Client, query: CallbackQuery):
+    _, page_str, query_text = query.data.split("_", 2)
+    page = int(page_str)
+    limit = 6
+    skip = page * limit
+    
+    results, total = await search_files(query_text, limit=limit, skip=skip)
+    if not results:
+        return await query.answer("Aur results nahi hain.", show_alert=True)
+    
+    buttons = []
+    for item in results:
+        name = item["file_name"][:38] + ("..." if len(item["file_name"]) > 38 else "")
+        buttons.append([InlineKeyboardButton(f"📄 {name}", callback_data=f"get_{str(item['_id'])}")])
+    
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton("⏪ Prev", callback_data=f"page_{page - 1}_{query_text}"))
+    if total > skip + limit:
+        nav.append(InlineKeyboardButton("Next ⏩", callback_data=f"page_{page + 1}_{query_text}"))
+    if nav:
+        buttons.append(nav)
+        
+    await query.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(buttons))
+    await query.answer()
+
+# ----------------- Main Entry Point -----------------
 if __name__ == "__main__":
     loop = asyncio.get_event_loop()
     loop.run_until_complete(init_db())
-    print("🚀 Bot is starting...")
+    print("🚀 Notes Search Bot Started Successfully!")
     app.run()

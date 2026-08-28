@@ -120,7 +120,7 @@ def get_fsub_keyboard(unsubbed_list):
     buttons.append([InlineKeyboardButton("🔄 Verify / Try Again", callback_data="check_fsub_again")])
     return InlineKeyboardMarkup(buttons)
 
-# ----------------- Auto Group Add Detector -----------------
+# ----------------- Auto Group/Channel Add Detector -----------------
 @app.on_chat_member_updated()
 async def on_bot_added(client: Client, chat_member: ChatMemberUpdated):
     if chat_member.new_chat_member and chat_member.new_chat_member.user.is_self:
@@ -129,14 +129,13 @@ async def on_bot_added(client: Client, chat_member: ChatMemberUpdated):
             await add_group(chat.id, chat.title or "Group")
             print(f"👥 Bot added to Group: {chat.title} ({chat.id})")
 
-# ----------------- 🌟 /start Command & Deep-Link Delivery (100% Fixed) -----------------
+# ----------------- /start Command -----------------
 @app.on_message(filters.command("start") & filters.private)
 async def start_handler(client: Client, message: Message):
     user_id = message.from_user.id
     first_name = message.from_user.first_name or "Aspirant"
     await add_user(user_id, first_name)
     
-    # Check FSUB
     unsubbed = await check_fsub(client, user_id)
     if unsubbed:
         return await message.reply_text(
@@ -144,25 +143,19 @@ async def start_handler(client: Client, message: Message):
             reply_markup=get_fsub_keyboard(unsubbed)
         )
     
-    # Check if user clicked from group deep-link (e.g. /start get_12345)
-    text = message.text.strip()
-    if " " in text:
-        parts = text.split()
-        if len(parts) > 1:
-            param = parts.strip()
-            if param.startswith("get_"):
-                try:
-                    msg_id_str = param.replace("get_", "")
-                    msg_id = int(msg_id_str)
-                    await client.copy_message(
-                        chat_id=user_id,
-                        from_chat_id=CHANNEL_ID,
-                        message_id=msg_id
-                    )
-                    return
-                except Exception as e:
-                    print(f"Deep link send error: {e}")
-                    return await message.reply_text(f"❌ Error delivering file: {str(e)}")
+    if len(message.command) > 1 and message.command.startswith("get_"):
+        try:
+            prefix, msg_id_str = message.command.split("_", 1)
+            msg_id = int(msg_id_str)
+            await client.copy_message(
+                chat_id=user_id,
+                from_chat_id=CHANNEL_ID,
+                message_id=msg_id
+            )
+            return
+        except Exception as e:
+            print(f"Deep link error: {e}")
+            return await message.reply_text(f"❌ Error delivering file: {str(e)}")
     
     welcome_text = (
         f"✨ **𝐖𝐄𝐋𝐂𝐎𝐌𝐄 𝐓𝐎 𝐂𝐀 𝐍𝐎𝐓𝐄𝐒 𝐌𝐀𝐒𝐓𝐄𝐑** ✨\n"
@@ -300,7 +293,7 @@ async def index_channel_handler(client: Client, message: Message):
             print(f"Batch error: {e}")
             continue
             
-    await status_msg.edit_text(f"✅ **Indexing Complete!**\nTotal **{count}** materials (PDFs, Photos & Links) are saved in the database.")
+    await status_msg.edit_text(f"✅ **Indexing Complete!**\nTotal **{count}** materials are saved in the database.")
 
 # ----------------- Admin Command: /stats -----------------
 @app.on_message(filters.command("stats") & filters.private)
@@ -322,7 +315,7 @@ async def stats_handler(client: Client, message: Message):
         f"🔒 **Force Subscribe:** `{fsub_text}`"
     )
 
-# ----------------- Admin Command: /broadcast -----------------
+# ----------------- 🚀 Dual Broadcast (Users + Groups) -----------------
 @app.on_message(filters.command("broadcast") & filters.private)
 async def broadcast_handler(client: Client, message: Message):
     if message.from_user.id not in ADMINS:
@@ -350,7 +343,7 @@ async def broadcast_handler(client: Client, message: Message):
     u_success, u_failed = 0, 0
     g_success, g_failed = 0, 0
     
-    # 1. Users DM
+    # 1. Broadcast to Private Users
     for u_id in users:
         try:
             if message.reply_to_message:
@@ -365,7 +358,7 @@ async def broadcast_handler(client: Client, message: Message):
         except Exception:
             u_failed += 1
             
-    # 2. Groups
+    # 2. Broadcast to Connected Groups
     for g_id in groups:
         try:
             if message.reply_to_message:
@@ -381,7 +374,7 @@ async def broadcast_handler(client: Client, message: Message):
             g_failed += 1
             
     await status_msg.edit_text(
-        f"✅ **Broadcast Completed!**\n\n"
+        f"✅ **Broadcast Completed Successfully!**\n\n"
         f"👤 **Users (DM):**\n"
         f"  • Sent: `{u_success}` | Failed: `{u_failed}`\n\n"
         f"💬 **Groups:**\n"
@@ -424,9 +417,10 @@ async def dm_search_handler(client: Client, message: Message):
         reply_markup=InlineKeyboardMarkup(buttons)
     )
 
-# ----------------- 2. Universal Group Search Handler -----------------
+# ----------------- 2. Universal Group Search & Auto-Register Handler -----------------
 @app.on_message(filters.group & filters.text)
 async def group_search_handler(client: Client, message: Message):
+    # Har aane wale message par group ko register karega
     await add_group(message.chat.id, message.chat.title or "Group")
     
     text = message.text.strip()
@@ -464,7 +458,7 @@ async def group_search_handler(client: Client, message: Message):
         reply_markup=InlineKeyboardMarkup(buttons)
     )
 
-# ----------------- Direct File Delivery Callback (DM Only) -----------------
+# ----------------- Direct Delivery Callback (DM Only) -----------------
 @app.on_callback_query(filters.regex(r"^get_"))
 async def send_file_callback(client: Client, query: CallbackQuery):
     try:

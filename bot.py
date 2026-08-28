@@ -68,7 +68,7 @@ async def start_handler(client: Client, message: Message):
         "Bas kisi bhi subject, teacher ya chapter ka naam likhkar send karein (e.g. `Hardik sir`, `Mv sir`, `Economics`)."
     )
 
-# /id Command: DM ya Group dono mein ID batayega
+# /id Command: DM aur Group dono mein kaam karega
 @app.on_message(filters.command("id"))
 async def get_my_id(client: Client, message: Message):
     if message.chat.type == enums.ChatType.PRIVATE:
@@ -242,28 +242,27 @@ async def dm_search_handler(client: Client, message: Message):
         reply_markup=InlineKeyboardMarkup(buttons)
     )
 
-# ----------------- 2. Group Search Handler (Sirf Aapke GROUP_ID mein chalega) -----------------
+# ----------------- 2. Group Search Handler (100% Fixed) -----------------
 @app.on_message(filters.chat(GROUP_ID) & filters.text)
 async def group_search_handler(client: Client, message: Message):
     text = message.text.strip()
     
-    # Agar member ne /search ya /notes use kiya
     is_command = False
     if text.startswith("/search") or text.startswith("/notes") or text.startswith("/get"):
         is_command = True
-        parts = text.split(" ", 1)
-        if len(parts) < 2 or len(parts.strip()) < 2:
+        if " " not in text:
             return await message.reply_text("❗ Usage: `/search topic_name` (e.g. `/search hardik sir`)")
-        query_text = parts.strip()
+        cmd, query_text = text.split(" ", 1)
+        query_text = query_text.strip()
+        if len(query_text) < 2:
+            return await message.reply_text("❗ Kripya kam se kam 2 akshar likhein.")
     else:
-        # Normal chat query (ignore common greetings)
-        if len(text) < 3 or text.lower() in ["hi", "hello", "gm", "gn", "ok", "thanks", "bye"]:
+        if len(text) < 3 or text.lower() in ["hi", "hello", "gm", "gn", "ok", "thanks", "bye", "hlo"]:
             return
         query_text = text
     
     results, total = await search_files(query_text, limit=5, skip=0)
     
-    # Agar command se search kiya tha aur nahi mila to batayega
     if not results:
         if is_command:
             await message.reply_text(f"❌ **'{query_text}'** ke related koi notes nahi mile.")
@@ -287,9 +286,8 @@ async def group_search_handler(client: Client, message: Message):
 @app.on_callback_query(filters.regex(r"^page_"))
 async def pagination_callback(client: Client, query: CallbackQuery):
     try:
-        parts = query.data.split("_", 2)
-        page = int(parts)
-        query_text = parts
+        prefix, page_str, query_text = query.data.split("_", 2)
+        page = int(page_str)
         limit = 6
         skip = page * limit
         

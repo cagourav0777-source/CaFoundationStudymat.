@@ -48,33 +48,55 @@ def get_fsub_keyboard(unsubbed_list):
     buttons.append([InlineKeyboardButton("🔄 Verify / Try Again", callback_data="check_fsub_again")])
     return InlineKeyboardMarkup(buttons)
 
-# ----------------- Basic Commands -----------------
+# ----------------- 🌟 Attractive English /start Command -----------------
 @app.on_message(filters.command("start") & filters.private)
 async def start_handler(client: Client, message: Message):
     user_id = message.from_user.id
-    await add_user(user_id, message.from_user.first_name)
+    first_name = message.from_user.first_name or "Student"
+    await add_user(user_id, first_name)
     
     unsubbed = await check_fsub(client, user_id)
     if unsubbed:
         return await message.reply_text(
-            "⚠️ **Access Denied!**\n\nBot ko use karne ke liye pehle hamare official channels ko join karein:",
+            "⚠️ **Access Denied!**\n\nPlease join our official channels below to unlock full search access:",
             reply_markup=get_fsub_keyboard(unsubbed)
         )
     
-    await message.reply_text(
-        f"👋 Namaste **{message.from_user.first_name}**!\n\n"
-        "📚 Main is Channel & Group ka Official Notes Search Bot hoon.\n\n"
-        "🔍 **Notes Kaise Payein:**\n"
-        "Bas kisi bhi subject, teacher ya chapter ka naam likhkar send karein (e.g. `Hardik sir`, `Mv sir`, `Economics`)."
+    welcome_text = (
+        f"👋 **Hello {first_name}, Welcome to CA Study Material Bot!** 📚\n\n"
+        "Your fast & smart companion to find Notes, Question Banks, MTPs, RTPs, Chart Books & Revision Material instantly.\n\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "📖 **HOW TO USE THIS BOT:**\n\n"
+        "1️⃣ **Type Your Query:**\n"
+        "   Simply send the subject, faculty name, or book title in this chat.\n"
+        "   • *Examples:* `Hardik Sir`, `MV Sir`, `Business Economics`, `Law Question Bank`\n\n"
+        "2️⃣ **Browse Interactive Results:**\n"
+        "   The bot scans 900+ indexed files and presents matching options with buttons.\n\n"
+        "3️⃣ **Instant Download:**\n"
+        "   Tap any button to jump directly to the exact file post in our official channel!\n\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "❓ **CAN'T FIND WHAT YOU ARE LOOKING FOR?**\n"
+        "If any specific note or question bank is missing, click below to request it directly in our discussion group!"
     )
+    
+    start_buttons = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("💬 Ask in Discussion Group", url="https://t.me/Caaspirants_26")
+        ],
+        [
+            InlineKeyboardButton("📢 Main Channel", url="https://t.me/Future_ca_minds")
+        ]
+    ])
+    
+    await message.reply_text(welcome_text, reply_markup=start_buttons)
 
-# /id Command: DM aur Group dono mein kaam karega
+# /id Command
 @app.on_message(filters.command("id"))
 async def get_my_id(client: Client, message: Message):
     if message.chat.type == enums.ChatType.PRIVATE:
-        await message.reply_text(f"👤 **Aapki User ID:** `{message.from_user.id}`")
+        await message.reply_text(f"👤 **Your Telegram User ID:** `{message.from_user.id}`")
     else:
-        await message.reply_text(f"👥 **Is Group ki Chat ID:** `{message.chat.id}`")
+        await message.reply_text(f"👥 **Group Chat ID:** `{message.chat.id}`")
 
 # ----------------- Force Sub Verification Callback -----------------
 @app.on_callback_query(filters.regex("^check_fsub_again$"))
@@ -82,10 +104,10 @@ async def fsub_callback(client: Client, query: CallbackQuery):
     user_id = query.from_user.id
     unsubbed = await check_fsub(client, user_id)
     if unsubbed:
-        return await query.answer("❌ Aapne abhi tak dono channels join nahi kiye hain!", show_alert=True)
+        return await query.answer("❌ You haven't joined all required channels yet!", show_alert=True)
     
     await query.message.delete()
-    await query.message.reply_text("✅ **Access Granted!** Ab aap koi bhi material search kar sakte hain.")
+    await query.message.reply_text("✅ **Access Granted!** You can now search for any notes or study material.")
 
 # ----------------- Real-Time Channel Auto-Indexer -----------------
 @app.on_message(filters.chat(CHANNEL_ID) & (filters.document | filters.audio | filters.video | filters.photo))
@@ -112,9 +134,9 @@ async def channel_post_listener(client: Client, message: Message):
 @app.on_message(filters.command("index") & filters.private)
 async def index_channel_handler(client: Client, message: Message):
     if message.from_user.id not in ADMINS:
-        return await message.reply_text(f"❌ Aap Admin nahi hain! ID: `{message.from_user.id}`")
+        return await message.reply_text(f"❌ You are not an Admin! Your ID: `{message.from_user.id}`")
     
-    status_msg = await message.reply_text("⏳ **Indexing shuru ho rahi hai...**")
+    status_msg = await message.reply_text("⏳ **Indexing channel messages...**")
     
     try:
         temp = await client.send_message(CHANNEL_ID, "Indexing...")
@@ -153,7 +175,7 @@ async def index_channel_handler(client: Client, message: Message):
             
             if count > 0 and count % 50 == 0:
                 try:
-                    await status_msg.edit_text(f"⏳ **Indexing in progress:** `{count}` files index ho chuki hain...")
+                    await status_msg.edit_text(f"⏳ **Indexing in progress:** `{count}` files scanned...")
                 except Exception:
                     pass
             await asyncio.sleep(0.3)
@@ -161,16 +183,16 @@ async def index_channel_handler(client: Client, message: Message):
         except FloodWait as e:
             await asyncio.sleep(e.value)
         except Exception as e:
-            print(f"Batch fetch error: {e}")
+            print(f"Batch error: {e}")
             continue
             
-    await status_msg.edit_text(f"✅ **Indexing Complete!**\nTotal **{count}** files database mein successfully index ho gayi hain.")
+    await status_msg.edit_text(f"✅ **Indexing Complete!**\nTotal **{count}** files are saved in the database.")
 
 # ----------------- Admin Command: /stats -----------------
 @app.on_message(filters.command("stats") & filters.private)
 async def stats_handler(client: Client, message: Message):
     if message.from_user.id not in ADMINS:
-        return await message.reply_text("❌ Aap Admin nahi hain.")
+        return await message.reply_text("❌ You are not an Admin.")
     
     u_count = await count_users()
     f_count = await count_files()
@@ -184,11 +206,11 @@ async def stats_handler(client: Client, message: Message):
 @app.on_message(filters.command("broadcast") & filters.private & filters.reply)
 async def broadcast_handler(client: Client, message: Message):
     if message.from_user.id not in ADMINS:
-        return await message.reply_text("❌ Sirf Admins broadcast kar sakte hain.")
+        return await message.reply_text("❌ Only Admins can broadcast.")
     
     users = await get_all_users()
     success, failed = 0, 0
-    status_msg = await message.reply_text(f"📢 Broadcast shuru: `{len(users)}` users...")
+    status_msg = await message.reply_text(f"📢 Broadcasting to `{len(users)}` users...")
     
     for u_id in users:
         try:
@@ -213,19 +235,24 @@ async def dm_search_handler(client: Client, message: Message):
     unsubbed = await check_fsub(client, user_id)
     if unsubbed:
         return await message.reply_text(
-            "⚠️ Bot ko access karne ke liye pehle channel join karein.",
+            "⚠️ Please join our official channels to use the bot.",
             reply_markup=get_fsub_keyboard(unsubbed)
         )
     
     query_text = message.text.strip()
     if len(query_text) < 2:
-        return await message.reply_text("❗ Kripya kam se kam 2 akshar likhein.")
+        return await message.reply_text("❗ Please type at least 2 characters to search.")
     
     results, total = await search_files(query_text, limit=6, skip=0)
     if not results:
+        not_found_buttons = InlineKeyboardMarkup([
+            [InlineKeyboardButton("💬 Ask in Discussion Group", url="https://t.me/Caaspirants_26")]
+        ])
         return await message.reply_text(
-            f"❌ **'{query_text}'** ke related koi material nahi mila.\n"
-            "Spelling check karein ya dusre keywords try karein."
+            f"❌ **No material found for:** `{query_text}`\n\n"
+            "• Please check the spelling or try broader keywords.\n"
+            "• If it's missing, you can request it in our group:",
+            reply_markup=not_found_buttons
         )
     
     buttons = []
@@ -238,11 +265,11 @@ async def dm_search_handler(client: Client, message: Message):
         buttons.append([InlineKeyboardButton("Next Page ⏩", callback_data=f"page_1_{query_text}")])
     
     await message.reply_text(
-        f"🔍 **Search Results for:** `{query_text}`\n📊 Total Files: **{total}**\n\nNiche click karke direct channel post par jayein:",
+        f"🔍 **Search Results for:** `{query_text}`\n📊 **Total Files Found:** `{total}`\n\nClick below to open the post directly in the channel:",
         reply_markup=InlineKeyboardMarkup(buttons)
     )
 
-# ----------------- 2. Group Search Handler (100% Fixed) -----------------
+# ----------------- 2. Group Search Handler -----------------
 @app.on_message(filters.chat(GROUP_ID) & filters.text)
 async def group_search_handler(client: Client, message: Message):
     text = message.text.strip()
@@ -255,7 +282,7 @@ async def group_search_handler(client: Client, message: Message):
         cmd, query_text = text.split(" ", 1)
         query_text = query_text.strip()
         if len(query_text) < 2:
-            return await message.reply_text("❗ Kripya kam se kam 2 akshar likhein.")
+            return await message.reply_text("❗ Please type at least 2 characters.")
     else:
         if len(text) < 3 or text.lower() in ["hi", "hello", "gm", "gn", "ok", "thanks", "bye", "hlo"]:
             return
@@ -265,7 +292,7 @@ async def group_search_handler(client: Client, message: Message):
     
     if not results:
         if is_command:
-            await message.reply_text(f"❌ **'{query_text}'** ke related koi notes nahi mile.")
+            await message.reply_text(f"❌ No notes found for `{query_text}`.")
         return
     
     buttons = []
@@ -278,7 +305,7 @@ async def group_search_handler(client: Client, message: Message):
         buttons.append([InlineKeyboardButton("Next Page ⏩", callback_data=f"page_1_{query_text}")])
     
     await message.reply_text(
-        f"📚 **Results for {message.from_user.mention}:** `{query_text}` (Total: {total})\nNiche click karke post dekhein:",
+        f"📚 **Results for {message.from_user.mention}:** `{query_text}` (Total: {total})\nClick below to view the file:",
         reply_markup=InlineKeyboardMarkup(buttons)
     )
 
@@ -286,14 +313,15 @@ async def group_search_handler(client: Client, message: Message):
 @app.on_callback_query(filters.regex(r"^page_"))
 async def pagination_callback(client: Client, query: CallbackQuery):
     try:
-        prefix, page_str, query_text = query.data.split("_", 2)
-        page = int(page_str)
+        parts = query.data.split("_", 2)
+        page = int(parts)
+        query_text = parts
         limit = 6
         skip = page * limit
         
         results, total = await search_files(query_text, limit=limit, skip=skip)
         if not results:
-            return await query.answer("Aur results nahi hain.", show_alert=True)
+            return await query.answer("No more results available.", show_alert=True)
         
         buttons = []
         for item in results:

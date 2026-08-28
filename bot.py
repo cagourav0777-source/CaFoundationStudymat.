@@ -8,7 +8,7 @@ from pyrogram.errors import UserNotParticipant, FloodWait
 from config import API_ID, API_HASH, BOT_TOKEN, ADMINS, CHANNEL_ID, FSUB_CHATS
 from database import (
     init_db, add_user, get_all_users, count_users, 
-    save_file, search_files, get_file_by_id, count_files
+    save_file, search_files, count_files
 )
 
 app = Client("notes_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
@@ -96,23 +96,16 @@ async def channel_post_listener(client: Client, message: Message):
 @app.on_message(filters.command("index") & filters.private)
 async def index_channel_handler(client: Client, message: Message):
     if message.from_user.id not in ADMINS:
-        return await message.reply_text(
-            f"❌ **Aap Admin nahi hain!**\n\n"
-            f"Aapki User ID: `{message.from_user.id}`\n"
-            f"Isko `config.py` mein `ADMINS` list mein add karein."
-        )
+        return await message.reply_text(f"❌ Aap Admin nahi hain! ID: `{message.from_user.id}`")
     
-    status_msg = await message.reply_text("⏳ **Aapke channel ki indexing shuru ho rahi hai...**")
+    status_msg = await message.reply_text("⏳ **Indexing shuru ho rahi hai...**")
     
     try:
         temp = await client.send_message(CHANNEL_ID, "Indexing...")
         last_id = temp.id
         await temp.delete()
     except Exception as e:
-        return await status_msg.edit_text(
-            f"❌ **Channel Access Error:** `{str(e)}`\n\n"
-            "Check karein ki bot channel mein Administrator hai aur messages post karne ki permission on hai."
-        )
+        return await status_msg.edit_text(f"❌ **Channel Access Error:** `{str(e)}`")
     
     count = 0
     batch_size = 200
@@ -161,11 +154,7 @@ async def index_channel_handler(client: Client, message: Message):
 @app.on_message(filters.command("stats") & filters.private)
 async def stats_handler(client: Client, message: Message):
     if message.from_user.id not in ADMINS:
-        return await message.reply_text(
-            f"❌ **Aap Admin nahi hain!**\n"
-            f"Aapki User ID: `{message.from_user.id}`\n"
-            f"Isko `config.py` mein `ADMINS` list mein add karein."
-        )
+        return await message.reply_text("❌ Aap Admin nahi hain.")
     
     u_count = await count_users()
     f_count = await count_files()
@@ -226,7 +215,8 @@ async def search_handler(client: Client, message: Message):
     buttons = []
     for item in results:
         name = item["file_name"][:38] + ("..." if len(item["file_name"]) > 38 else "")
-        buttons.append([InlineKeyboardButton(f"📄 {name}", callback_data=f"get_{str(item['_id'])}")])
+        # Direct Message ID se button link kiya gaya hai
+        buttons.append([InlineKeyboardButton(f"📄 {name}", callback_data=f"get_{item['message_id']}")])
     
     if total > 6:
         buttons.append([InlineKeyboardButton("Next Page ⏩", callback_data=f"page_1_{query_text}")])
@@ -236,34 +226,24 @@ async def search_handler(client: Client, message: Message):
         reply_markup=InlineKeyboardMarkup(buttons)
     )
 
-# ----------------- Callback Handlers (File Delivery & Pagination) -----------------
+# ----------------- Direct File Delivery Callback -----------------
 @app.on_callback_query(filters.regex(r"^get_"))
 async def send_file_callback(client: Client, query: CallbackQuery):
-    doc_id = query.data.split("_", 1)
-    file_info = await get_file_by_id(doc_id)
-    
-    if not file_info:
-        return await query.answer("❌ File nahi mili ya delete ho chuki hai.", show_alert=True)
+    msg_id = int(query.data.split("_", 1))
     
     try:
+        # Channel se direct file send karega
         await client.copy_message(
             chat_id=query.from_user.id,
-            from_chat_id=file_info["chat_id"],
-            message_id=file_info["message_id"]
+            from_chat_id=CHANNEL_ID,
+            message_id=msg_id
         )
-        await query.answer("✅ File send ho rahi hai!")
+        await query.answer("✅ File send ho gayi!")
     except Exception as e:
-        try:
-            await client.send_cached_media(
-                chat_id=query.from_user.id,
-                file_id=file_info["file_id"],
-                caption=file_info.get("caption", "")
-            )
-            await query.answer("✅ File send ho rahi hai!")
-        except Exception as err:
-            await query.answer(f"❌ Error: {str(err)}", show_alert=True)
-            print(f"Send Error: {e} | Fallback Error: {err}")
+        await query.answer(f"❌ File bhejne mein error: {str(e)}", show_alert=True)
+        print(f"Send Error: {e}")
 
+# ----------------- Pagination Callback -----------------
 @app.on_callback_query(filters.regex(r"^page_"))
 async def pagination_callback(client: Client, query: CallbackQuery):
     _, page_str, query_text = query.data.split("_", 2)
@@ -278,7 +258,7 @@ async def pagination_callback(client: Client, query: CallbackQuery):
     buttons = []
     for item in results:
         name = item["file_name"][:38] + ("..." if len(item["file_name"]) > 38 else "")
-        buttons.append([InlineKeyboardButton(f"📄 {name}", callback_data=f"get_{str(item['_id'])}")])
+        buttons.append([InlineKeyboardButton(f"📄 {name}", callback_data=f"get_{item['message_id']}")])
     
     nav = []
     if page > 0:

@@ -129,7 +129,7 @@ async def on_bot_added(client: Client, chat_member: ChatMemberUpdated):
             await add_group(chat.id, chat.title or "Group")
             print(f"👥 Bot added to Group: {chat.title} ({chat.id})")
 
-# ----------------- 🌟 /start Command & Deep-Link Delivery (100% Fixed) -----------------
+# ----------------- 🌟 /start Command & Deep-Link Delivery (Clean Unpack) -----------------
 @app.on_message(filters.command("start") & filters.private)
 async def start_handler(client: Client, message: Message):
     user_id = message.from_user.id
@@ -145,24 +145,23 @@ async def start_handler(client: Client, message: Message):
         )
     
     # Check if user clicked from group deep-link (e.g. /start get_12345)
-    text = message.text.strip()
-    if " " in text:
-        parts = text.split()
-        if len(parts) > 1:
-            param = parts.strip()
-            if param.startswith("get_"):
-                try:
-                    msg_id_str = param.replace("get_", "")
-                    msg_id = int(msg_id_str)
-                    await client.copy_message(
-                        chat_id=user_id,
-                        from_chat_id=CHANNEL_ID,
-                        message_id=msg_id
-                    )
-                    return
-                except Exception as e:
-                    print(f"Deep link send error: {e}")
-                    return await message.reply_text(f"❌ Error delivering file: {str(e)}")
+    raw_text = message.text.strip()
+    if " " in raw_text:
+        cmd, param = raw_text.split(" ", 1)
+        param = param.strip()
+        if param.startswith("get_"):
+            try:
+                msg_id_str = param.replace("get_", "").strip()
+                msg_id = int(msg_id_str)
+                await client.copy_message(
+                    chat_id=user_id,
+                    from_chat_id=CHANNEL_ID,
+                    message_id=msg_id
+                )
+                return
+            except Exception as e:
+                print(f"Deep link send error: {e}")
+                return await message.reply_text(f"❌ Error delivering file: {str(e)}")
     
     welcome_text = (
         f"✨ **𝐖𝐄𝐋𝐂𝐎𝐌𝐄 𝐓𝐎 𝐂𝐀 𝐍𝐎𝐓𝐄𝐒 𝐌𝐀𝐒𝐓𝐄𝐑** ✨\n"
@@ -381,7 +380,7 @@ async def broadcast_handler(client: Client, message: Message):
             g_failed += 1
             
     await status_msg.edit_text(
-        f"✅ **Broadcast Completed!**\n\n"
+        f"✅ **Broadcast Completed Successfully!**\n\n"
         f"👤 **Users (DM):**\n"
         f"  • Sent: `{u_success}` | Failed: `{u_failed}`\n\n"
         f"💬 **Groups:**\n"
@@ -424,9 +423,10 @@ async def dm_search_handler(client: Client, message: Message):
         reply_markup=InlineKeyboardMarkup(buttons)
     )
 
-# ----------------- 2. Universal Group Search Handler -----------------
+# ----------------- 2. Universal Group Search & Auto-Register Handler -----------------
 @app.on_message(filters.group & filters.text)
 async def group_search_handler(client: Client, message: Message):
+    # Har aane wale message par group ko register karega
     await add_group(message.chat.id, message.chat.title or "Group")
     
     text = message.text.strip()
@@ -464,7 +464,7 @@ async def group_search_handler(client: Client, message: Message):
         reply_markup=InlineKeyboardMarkup(buttons)
     )
 
-# ----------------- Direct File Delivery Callback (DM Only) -----------------
+# ----------------- Direct Delivery Callback (DM Only) -----------------
 @app.on_callback_query(filters.regex(r"^get_"))
 async def send_file_callback(client: Client, query: CallbackQuery):
     try:

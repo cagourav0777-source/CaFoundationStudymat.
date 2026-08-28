@@ -8,7 +8,7 @@ API_HASH = os.environ.get("API_HASH", "your_api_hash_here")
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "your_bot_token_here")
 
 # Admin IDs (Apna Telegram User ID daalein)
-ADMINS = [int(x) for x in os.environ.get("ADMINS", "123456789").split()]
+ADMINS = [int(x) for x in os.environ.get("ADMINS", "8709673662").split()]
 
 # Notes Channel ID jisme se files search karni hai (e.g. -1001234567890)
 CHANNEL_ID = int(os.environ.get("CHANNEL_ID", "-1001234567890"))

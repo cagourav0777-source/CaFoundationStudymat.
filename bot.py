@@ -215,7 +215,6 @@ async def search_handler(client: Client, message: Message):
     buttons = []
     for item in results:
         name = item["file_name"][:38] + ("..." if len(item["file_name"]) > 38 else "")
-        # Direct Message ID se button link kiya gaya hai
         buttons.append([InlineKeyboardButton(f"📄 {name}", callback_data=f"get_{item['message_id']}")])
     
     if total > 6:
@@ -229,10 +228,9 @@ async def search_handler(client: Client, message: Message):
 # ----------------- Direct File Delivery Callback -----------------
 @app.on_callback_query(filters.regex(r"^get_"))
 async def send_file_callback(client: Client, query: CallbackQuery):
-    msg_id = int(query.data.split("_", 1))
-    
     try:
-        # Channel se direct file send karega
+        msg_id = int(query.data.split("_", 1))
+        
         await client.copy_message(
             chat_id=query.from_user.id,
             from_chat_id=CHANNEL_ID,
@@ -240,36 +238,39 @@ async def send_file_callback(client: Client, query: CallbackQuery):
         )
         await query.answer("✅ File send ho gayi!")
     except Exception as e:
-        await query.answer(f"❌ File bhejne mein error: {str(e)}", show_alert=True)
+        await query.answer(f"❌ Error: {str(e)}", show_alert=True)
         print(f"Send Error: {e}")
 
 # ----------------- Pagination Callback -----------------
 @app.on_callback_query(filters.regex(r"^page_"))
 async def pagination_callback(client: Client, query: CallbackQuery):
-    _, page_str, query_text = query.data.split("_", 2)
-    page = int(page_str)
-    limit = 6
-    skip = page * limit
-    
-    results, total = await search_files(query_text, limit=limit, skip=skip)
-    if not results:
-        return await query.answer("Aur results nahi hain.", show_alert=True)
-    
-    buttons = []
-    for item in results:
-        name = item["file_name"][:38] + ("..." if len(item["file_name"]) > 38 else "")
-        buttons.append([InlineKeyboardButton(f"📄 {name}", callback_data=f"get_{item['message_id']}")])
-    
-    nav = []
-    if page > 0:
-        nav.append(InlineKeyboardButton("⏪ Prev", callback_data=f"page_{page - 1}_{query_text}"))
-    if total > skip + limit:
-        nav.append(InlineKeyboardButton("Next ⏩", callback_data=f"page_{page + 1}_{query_text}"))
-    if nav:
-        buttons.append(nav)
+    try:
+        _, page_str, query_text = query.data.split("_", 2)
+        page = int(page_str)
+        limit = 6
+        skip = page * limit
         
-    await query.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(buttons))
-    await query.answer()
+        results, total = await search_files(query_text, limit=limit, skip=skip)
+        if not results:
+            return await query.answer("Aur results nahi hain.", show_alert=True)
+        
+        buttons = []
+        for item in results:
+            name = item["file_name"][:38] + ("..." if len(item["file_name"]) > 38 else "")
+            buttons.append([InlineKeyboardButton(f"📄 {name}", callback_data=f"get_{item['message_id']}")])
+        
+        nav = []
+        if page > 0:
+            nav.append(InlineKeyboardButton("⏪ Prev", callback_data=f"page_{page - 1}_{query_text}"))
+        if total > skip + limit:
+            nav.append(InlineKeyboardButton("Next ⏩", callback_data=f"page_{page + 1}_{query_text}"))
+        if nav:
+            buttons.append(nav)
+            
+        await query.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(buttons))
+        await query.answer()
+    except Exception as e:
+        await query.answer(f"Error: {str(e)}", show_alert=True)
 
 # ----------------- Inline Search Mode -----------------
 @app.on_inline_query()

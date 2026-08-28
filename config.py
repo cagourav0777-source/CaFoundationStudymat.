@@ -16,8 +16,8 @@ CHANNEL_ID = int(os.environ.get("CHANNEL_ID", "-1003990661985"))
 # Force Subscribe Channels/Groups (Username ya Chat ID)
 # Dono mein bot ka Admin hona zaroori hai
 FSUB_CHATS = [
-    {"name": "📢 Main Notes Channel", "chat": os.environ.get("FSUB_CHANNEL", "https://t.me/Ca_minds")},
-    {"name": "💬 Discussion Group", "chat": os.environ.get("FSUB_GROUP", "https://t.me/Caaspirants_26")}
+    {"name": "📢 Main Notes Channel", "chat": os.environ.get("FSUB_CHANNEL", "@Ca_minds")},
+    {"name": "💬 Discussion Group", "chat": os.environ.get("FSUB_GROUP", "@Caaspirants_26")}
 ]
 
 # MongoDB Connection URL (MongoDB Atlas se free cluster banayein)

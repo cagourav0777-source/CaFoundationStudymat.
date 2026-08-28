@@ -1,4 +1,5 @@
 import asyncio
+import re
 from pyrogram import Client, filters, enums
 from pyrogram.types import (
     Message, InlineKeyboardMarkup, InlineKeyboardButton, 
@@ -13,30 +14,31 @@ from database import (
 
 app = Client("notes_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
-# ----------------- Helper: Smart Button Title -----------------
+# ----------------- Helper: Smart Button Title (Drive Links & Files) -----------------
 def get_display_title(item):
     caption = item.get("caption", "").strip()
     file_name = item.get("file_name", "").strip()
     
+    # Agar post mein Drive Link / URL hai toh Link icon 🔗 dikhayega
+    is_link = "http://" in caption or "https://" in caption or "drive.google.com" in caption or "mega.nz" in caption
+    icon = "🔗" if is_link else "📄"
+    
     if caption:
         first_line = caption.split("\n")[0].strip()
-        if len(first_line) > 2:
-            title = first_line
-        else:
-            title = file_name or "Study Material"
+        title = first_line if len(first_line) > 2 else (file_name or "Study Material")
     else:
         title = file_name or "Study Material"
     
-    if len(title) > 38:
-        return title[:38] + "..."
-    return title
+    # Clean length for buttons
+    if len(title) > 36:
+        return f"{icon} {title[:36]}..."
+    return f"{icon} {title}"
 
 # ----------------- Force Subscribe Helpers (Dynamic ON/OFF) -----------------
 async def check_fsub(client: Client, user_id: int):
-    # Check if FSUB is currently enabled in settings
     is_fsub_active = await get_fsub_status()
     if not is_fsub_active:
-        return []  # FSUB OFF hai, sabko allow karega
+        return []  # FSUB OFF hai, sabko access milega
     
     unsubbed = []
     for item in FSUB_CHATS:
@@ -59,47 +61,55 @@ def get_fsub_keyboard(unsubbed_list):
     buttons.append([InlineKeyboardButton("🔄 Verify / Try Again", callback_data="check_fsub_again")])
     return InlineKeyboardMarkup(buttons)
 
-# ----------------- /start Command -----------------
+# ----------------- 🌟 Attractive & Professional /start Command -----------------
 @app.on_message(filters.command("start") & filters.private)
 async def start_handler(client: Client, message: Message):
     user_id = message.from_user.id
-    first_name = message.from_user.first_name or "Student"
+    first_name = message.from_user.first_name or "Aspirant"
     await add_user(user_id, first_name)
     
     unsubbed = await check_fsub(client, user_id)
     if unsubbed:
         return await message.reply_text(
-            "⚠️ **Access Denied!**\n\nPlease join our official channels below to unlock full search access:",
+            "⚠️ **Access Denied!**\n\nPlease join our official channels below to unlock search access:",
             reply_markup=get_fsub_keyboard(unsubbed)
         )
     
+    # Direct file deep-link handle karna
+    if len(message.command) > 1 and message.command.startswith("get_"):
+        try:
+            prefix, msg_id_str = message.command.split("_", 1)
+            msg_id = int(msg_id_str)
+            await client.copy_message(
+                chat_id=user_id,
+                from_chat_id=CHANNEL_ID,
+                message_id=msg_id
+            )
+            return
+        except Exception as e:
+            print(f"Deep link send error: {e}")
+    
     welcome_text = (
-        f"👋 **Hello {first_name}, Welcome to CA Study Material Bot!** 📚\n\n"
-        "Your fast & smart companion to find Notes, Question Banks, MTPs, RTPs, Chart Books & Revision Material instantly.\n\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
-        "📖 **HOW TO USE THIS BOT:**\n\n"
-        "1️⃣ **Type Your Query:**\n"
-        "   Simply send the subject, faculty name, or book title in this chat.\n"
-        "   • *Examples:* `Hardik Sir`, `MV Sir`, `Business Economics`, `MTP Sept 26`\n\n"
-        "2️⃣ **Browse Interactive Results:**\n"
-        "   The bot scans 900+ indexed files with crystal-clear subject titles on buttons.\n\n"
-        "3️⃣ **Instant File Delivery:**\n"
-        "   Tap any button and the bot will send the exact PDF file directly to your chat!\n\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
-        "❓ **CAN'T FIND WHAT YOU ARE LOOKING FOR?**\n"
-        "If any specific note or question bank is missing, click below to request it directly in our discussion group!"
+        f"✨ **𝐖𝐄𝐋𝐂𝐎𝐌𝐄 𝐓𝐎 𝐂𝐀 𝐍𝐎𝐓𝐄𝐒 𝐌𝐀𝐒𝐓𝐄𝐑** ✨\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"👋 Hello **{first_name}**, your personal automated search engine for **CA Foundation & Inter** study resources.\n\n"
+        f"⚡ Find **Notes, Question Banks, MTPs, RTPs, Chart Books & Google Drive Links** in seconds!\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"🚀 **𝐇𝐎𝐖 𝐓𝐎 𝐒𝐄𝐀𝐑𝐂𝐇:**\n\n"
+        f"1️⃣ **Send Any Keyword:**\n"
+        f"   Just type what you need directly in this chat:\n"
+        f"   • *Faculty:* `Hardik Sir`, `MV Sir`, `Shubham Singhal`\n"
+        f"   • *Subjects:* `Business Economics`, `Law`, `Accounts`, `QA`\n"
+        f"   • *Material:* `Question Bank`, `MTP Sept 26`, `Drive Links`\n\n"
+        f"2️⃣ **Smart Results:**\n"
+        f"   The bot scans all files & Drive folders with clear titles.\n\n"
+        f"3️⃣ **Instant File & Link Delivery:**\n"
+        f"   Tap any button and get the exact PDF or Drive Link instantly in your chat!\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"💡 *Pro Tip: Keep queries concise (e.g. `Hardik sir Law`) for best results.*"
     )
     
-    start_buttons = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("💬 Ask in Discussion Group", url="https://t.me/Caaspirants_26")
-        ],
-        [
-            InlineKeyboardButton("📢 Main Channel", url="https://t.me/Future_ca_minds")
-        ]
-    ])
-    
-    await message.reply_text(welcome_text, reply_markup=start_buttons)
+    await message.reply_text(welcome_text)
 
 # /id Command
 @app.on_message(filters.command("id"))
@@ -113,24 +123,24 @@ async def get_my_id(client: Client, message: Message):
 @app.on_message(filters.command(["startfsub", "stopfsub", "fsub"]) & filters.private)
 async def fsub_toggle_handler(client: Client, message: Message):
     if message.from_user.id not in ADMINS:
-        return await message.reply_text("❌ Sirf Admin is setting ko change kar sakte hain.")
+        return await message.reply_text("❌ Only Admins can change this setting.")
     
     cmd = message.command[0].lower()
     arg = message.command.lower() if len(message.command) > 1 else ""
     
     if cmd == "startfsub" or arg == "on":
         await set_fsub_status(True)
-        await message.reply_text("✅ **Force Subscribe (FSUB) is now turned ON!**\n\nAb users ko bot use karne se pehle channels join karne padenge.")
+        await message.reply_text("✅ **Force Subscribe (FSUB) is now turned ON!**\n\nUsers must join channels to use the bot.")
     elif cmd == "stopfsub" or arg == "off":
         await set_fsub_status(False)
-        await message.reply_text("🟢 **Force Subscribe (FSUB) is now turned OFF!**\n\nAb koi bhi user bina channel join kiye directly bot use kar sakta hai (Growth Mode Active 🚀).")
+        await message.reply_text("🟢 **Force Subscribe (FSUB) is now turned OFF!**\n\nGrowth Mode Active: All users have free instant access.")
     else:
         status = await get_fsub_status()
         status_text = "🟢 **ON (Active)**" if status else "🔴 **OFF (Disabled - Free Access)**"
         await message.reply_text(
             f"⚙️ **Current FSUB Status:** {status_text}\n\n"
-            "• Turn ON: `/startfsub` ya `/fsub on`\n"
-            "• Turn OFF: `/stopfsub` ya `/fsub off`"
+            "• Turn ON: `/startfsub` or `/fsub on`\n"
+            "• Turn OFF: `/stopfsub` or `/fsub off`"
         )
 
 # ----------------- Force Sub Verification Callback -----------------
@@ -144,17 +154,26 @@ async def fsub_callback(client: Client, query: CallbackQuery):
     await query.message.delete()
     await query.message.reply_text("✅ **Access Granted!** You can now search for any notes or study material.")
 
-# ----------------- Real-Time Channel Auto-Indexer -----------------
-@app.on_message(filters.chat(CHANNEL_ID) & (filters.document | filters.audio | filters.video | filters.photo))
+# ----------------- Real-Time Channel Auto-Indexer (Files + Drive Links) -----------------
+@app.on_message(filters.chat(CHANNEL_ID))
 async def channel_post_listener(client: Client, message: Message):
     file = message.document or message.audio or message.video or (message.photo and message.photo.file_id)
-    if not file:
-        return
     
-    file_name = getattr(file, "file_name", None) or message.caption or f"File_{message.id}"
-    file_id = getattr(file, "file_id", "")
-    file_size = getattr(file, "file_size", 0)
-    caption = message.caption or ""
+    if file:
+        file_name = getattr(file, "file_name", None) or message.caption or f"File_{message.id}"
+        file_id = getattr(file, "file_id", "")
+        file_size = getattr(file, "file_size", 0)
+        caption = message.caption or ""
+    elif message.text:
+        text_content = message.text.strip()
+        if len(text_content) < 5 or text_content.startswith("/"):
+            return
+        file_name = text_content.split("\n")[0][:60]
+        file_id = ""
+        file_size = 0
+        caption = text_content
+    else:
+        return
     
     await save_file(
         file_id=file_id,
@@ -165,13 +184,13 @@ async def channel_post_listener(client: Client, message: Message):
         message_id=message.id
     )
 
-# ----------------- Admin Command: /index -----------------
+# ----------------- Admin Command: /index (Indexes PDFs + Drive Links) -----------------
 @app.on_message(filters.command("index") & filters.private)
 async def index_channel_handler(client: Client, message: Message):
     if message.from_user.id not in ADMINS:
         return await message.reply_text(f"❌ You are not an Admin! Your ID: `{message.from_user.id}`")
     
-    status_msg = await message.reply_text("⏳ **Indexing channel messages...**")
+    status_msg = await message.reply_text("⏳ **Indexing channel (PDFs + Drive Links)...**")
     
     try:
         temp = await client.send_message(CHANNEL_ID, "Indexing...")
@@ -197,20 +216,30 @@ async def index_channel_handler(client: Client, message: Message):
                     file_id = getattr(file, "file_id", "")
                     file_size = getattr(file, "file_size", 0)
                     caption = msg.caption or ""
-                    
-                    await save_file(
-                        file_id=file_id,
-                        file_name=file_name,
-                        file_size=file_size,
-                        caption=caption,
-                        chat_id=msg.chat.id,
-                        message_id=msg.id
-                    )
-                    count += 1
+                elif msg.text:
+                    text_content = msg.text.strip()
+                    if len(text_content) < 5 or text_content.startswith("/"):
+                        continue
+                    file_name = text_content.split("\n")[0][:60]
+                    file_id = ""
+                    file_size = 0
+                    caption = text_content
+                else:
+                    continue
+                
+                await save_file(
+                    file_id=file_id,
+                    file_name=file_name,
+                    file_size=file_size,
+                    caption=caption,
+                    chat_id=msg.chat.id,
+                    message_id=msg.id
+                )
+                count += 1
             
             if count > 0 and count % 50 == 0:
                 try:
-                    await status_msg.edit_text(f"⏳ **Indexing in progress:** `{count}` files scanned...")
+                    await status_msg.edit_text(f"⏳ **Indexing in progress:** `{count}` items (PDFs + Links) saved...")
                 except Exception:
                     pass
             await asyncio.sleep(0.3)
@@ -221,7 +250,7 @@ async def index_channel_handler(client: Client, message: Message):
             print(f"Batch error: {e}")
             continue
             
-    await status_msg.edit_text(f"✅ **Indexing Complete!**\nTotal **{count}** files are saved in the database.")
+    await status_msg.edit_text(f"✅ **Indexing Complete!**\nTotal **{count}** materials (PDFs, Notes & Drive Links) are saved in the database.")
 
 # ----------------- Admin Command: /stats -----------------
 @app.on_message(filters.command("stats") & filters.private)
@@ -237,25 +266,40 @@ async def stats_handler(client: Client, message: Message):
     await message.reply_text(
         "📊 **Bot Statistics:**\n\n"
         f"👥 **Total Users:** `{u_count}`\n"
-        f"📁 **Total Indexed Files:** `{f_count}`\n"
+        f"📁 **Total Indexed Materials:** `{f_count}`\n"
         f"🔒 **Force Subscribe:** `{fsub_text}`"
     )
 
-# ----------------- Admin Command: /broadcast -----------------
-@app.on_message(filters.command("broadcast") & filters.private & filters.reply)
+# ----------------- Admin Command: /broadcast (Reply or Direct Text) -----------------
+@app.on_message(filters.command("broadcast") & filters.private)
 async def broadcast_handler(client: Client, message: Message):
     if message.from_user.id not in ADMINS:
         return await message.reply_text("❌ Only Admins can broadcast.")
     
+    # Check if replied to a message or provided text
+    if not message.reply_to_message and len(message.command) < 2:
+        return await message.reply_text(
+            "❗ **Broadcast Kaise Karein:**\n\n"
+            "1️⃣ Kisi bhi Photo, Text, PDF ya Video ko **Reply** karke `/broadcast` likhein.\n"
+            "2️⃣ YA fir direct likhein: `/broadcast Aapka message yahan`"
+        )
+    
     users = await get_all_users()
+    if not users:
+        return await message.reply_text("❌ Abhi tak database mein koi users nahi hain.")
+    
+    status_msg = await message.reply_text(f"📢 **Broadcast shuru ho raha hai:** `{len(users)}` users...")
     success, failed = 0, 0
-    status_msg = await message.reply_text(f"📢 Broadcasting to `{len(users)}` users...")
     
     for u_id in users:
         try:
-            await message.reply_to_message.copy(chat_id=u_id)
+            if message.reply_to_message:
+                await message.reply_to_message.copy(chat_id=u_id)
+            else:
+                broadcast_text = message.text.split(" ", 1)
+                await client.send_message(chat_id=u_id, text=broadcast_text)
             success += 1
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.04)
         except FloodWait as e:
             await asyncio.sleep(e.value)
         except Exception:
@@ -263,8 +307,9 @@ async def broadcast_handler(client: Client, message: Message):
             
     await status_msg.edit_text(
         f"✅ **Broadcast Completed!**\n\n"
-        f"🟢 Sent: `{success}`\n"
-        f"🔴 Failed: `{failed}`"
+        f"🟢 **Delivered:** `{success}`\n"
+        f"🔴 **Failed / Blocked:** `{failed}`\n"
+        f"👥 **Total Targeted:** `{len(users)}`"
     )
 
 # ----------------- 1. DM Search Handler -----------------
@@ -284,26 +329,21 @@ async def dm_search_handler(client: Client, message: Message):
     
     results, total = await search_files(query_text, limit=6, skip=0)
     if not results:
-        not_found_buttons = InlineKeyboardMarkup([
-            [InlineKeyboardButton("💬 Ask in Discussion Group", url="https://t.me/Caaspirants_26")]
-        ])
         return await message.reply_text(
             f"❌ **No material found for:** `{query_text}`\n\n"
-            "• Please check the spelling or try broader keywords.\n"
-            "• If it's missing, you can request it in our group:",
-            reply_markup=not_found_buttons
+            "• Please check the spelling or try broader keywords (e.g. `Hardik sir`, `Economics`)."
         )
     
     buttons = []
     for item in results:
         display_name = get_display_title(item)
-        buttons.append([InlineKeyboardButton(f"📄 {display_name}", callback_data=f"get_{item['message_id']}")])
+        buttons.append([InlineKeyboardButton(display_name, callback_data=f"get_{item['message_id']}")])
     
     if total > 6:
         buttons.append([InlineKeyboardButton("Next Page ⏩", callback_data=f"page_1_{query_text}")])
     
     await message.reply_text(
-        f"🔍 **Search Results for:** `{query_text}`\n📊 **Total Files Found:** `{total}`\n\nTap below to receive the file directly:",
+        f"🔍 **Search Results for:** `{query_text}`\n📊 **Total Found:** `{total}`\n\nTap below to receive the file or drive link directly:",
         reply_markup=InlineKeyboardMarkup(buttons)
     )
 
@@ -336,31 +376,32 @@ async def group_search_handler(client: Client, message: Message):
     buttons = []
     for item in results:
         display_name = get_display_title(item)
-        buttons.append([InlineKeyboardButton(f"📄 {display_name}", callback_data=f"get_{item['message_id']}")])
+        buttons.append([InlineKeyboardButton(display_name, callback_data=f"get_{item['message_id']}")])
     
     if total > 5:
         buttons.append([InlineKeyboardButton("Next Page ⏩", callback_data=f"page_1_{query_text}")])
     
     await message.reply_text(
-        f"📚 **Results for {message.from_user.mention}:** `{query_text}` (Total: {total})\nTap below to receive the file in your DM:",
+        f"📚 **Results for {message.from_user.mention}:** `{query_text}` (Total: {total})\nTap below to receive the material in your DM:",
         reply_markup=InlineKeyboardMarkup(buttons)
     )
 
-# ----------------- Direct File Delivery Callback -----------------
+# ----------------- Direct Delivery Callback (PDFs + Drive Links) -----------------
 @app.on_callback_query(filters.regex(r"^get_"))
 async def send_file_callback(client: Client, query: CallbackQuery):
     try:
         prefix, msg_id_str = query.data.split("_", 1)
         msg_id = int(msg_id_str)
         
+        # User ke DM mein channel ka original message (PDF ya Drive link text) send karega
         await client.copy_message(
             chat_id=query.from_user.id,
             from_chat_id=CHANNEL_ID,
             message_id=msg_id
         )
-        await query.answer("✅ File sent to your chat!", show_alert=False)
+        await query.answer("✅ Material sent to your chat!", show_alert=False)
     except Exception as e:
-        print(f"Send File Error: {e}")
+        print(f"Send Error: {e}")
         await query.answer("❌ File send nahi ho saki! Pehle bot ke DM mein jakar /start karein.", show_alert=True)
 
 # ----------------- Pagination Callback -----------------
@@ -379,7 +420,7 @@ async def pagination_callback(client: Client, query: CallbackQuery):
         buttons = []
         for item in results:
             display_name = get_display_title(item)
-            buttons.append([InlineKeyboardButton(f"📄 {display_name}", callback_data=f"get_{item['message_id']}")])
+            buttons.append([InlineKeyboardButton(display_name, callback_data=f"get_{item['message_id']}")])
         
         nav = []
         if page > 0:

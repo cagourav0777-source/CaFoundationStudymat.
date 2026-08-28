@@ -11,13 +11,13 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN", "your_bot_token_here")
 ADMINS = [int(x) for x in os.environ.get("ADMINS", "8709673662").split()]
 
 # Notes Channel ID jisme se files search karni hai (e.g. -1001234567890)
-CHANNEL_ID = int(os.environ.get("CHANNEL_ID", "-1001234567890"))
+CHANNEL_ID = int(os.environ.get("CHANNEL_ID", "-1003990661985"))
 
 # Force Subscribe Channels/Groups (Username ya Chat ID)
 # Dono mein bot ka Admin hona zaroori hai
 FSUB_CHATS = [
-    {"name": "📢 Main Notes Channel", "chat": os.environ.get("FSUB_CHANNEL", "YourChannelUsername")},
-    {"name": "💬 Discussion Group", "chat": os.environ.get("FSUB_GROUP", "YourGroupUsername")}
+    {"name": "📢 Main Notes Channel", "chat": os.environ.get("FSUB_CHANNEL", "https://t.me/Ca_minds")},
+    {"name": "💬 Discussion Group", "chat": os.environ.get("FSUB_GROUP", "https://t.me/Caaspirants_26")}
 ]
 
 # MongoDB Connection URL (MongoDB Atlas se free cluster banayein)

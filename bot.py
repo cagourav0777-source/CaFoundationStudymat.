@@ -13,6 +13,26 @@ from database import (
 
 app = Client("notes_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
+# ----------------- Helper: Smart Button Title (Caption > File Name) -----------------
+def get_display_title(item):
+    caption = item.get("caption", "").strip()
+    file_name = item.get("file_name", "").strip()
+    
+    # Agar Caption hai toh pehli line ko title banayega
+    if caption:
+        first_line = caption.split("\n")[0].strip()
+        if len(first_line) > 2:
+            title = first_line
+        else:
+            title = file_name or "Study Material"
+    else:
+        title = file_name or "Study Material"
+    
+    # Mobile screen ke button format ke hisaab se clean limit
+    if len(title) > 38:
+        return title[:38] + "..."
+    return title
+
 # ----------------- Force Subscribe Helpers -----------------
 async def check_fsub(client: Client, user_id: int):
     unsubbed = []
@@ -43,27 +63,12 @@ async def start_handler(client: Client, message: Message):
     first_name = message.from_user.first_name or "Student"
     await add_user(user_id, first_name)
     
-    # Check Force Subscribe
     unsubbed = await check_fsub(client, user_id)
     if unsubbed:
         return await message.reply_text(
             "⚠️ **Access Denied!**\n\nPlease join our official channels below to unlock full search access:",
             reply_markup=get_fsub_keyboard(unsubbed)
         )
-    
-    # Agar user direct file deep-link se aaya hai
-    if len(message.command) > 1 and message.command.startswith("get_"):
-        try:
-            prefix, msg_id_str = message.command.split("_", 1)
-            msg_id = int(msg_id_str)
-            await client.copy_message(
-                chat_id=user_id,
-                from_chat_id=CHANNEL_ID,
-                message_id=msg_id
-            )
-            return
-        except Exception as e:
-            print(f"Deep link send error: {e}")
     
     welcome_text = (
         f"👋 **Hello {first_name}, Welcome to CA Study Material Bot!** 📚\n\n"
@@ -72,9 +77,9 @@ async def start_handler(client: Client, message: Message):
         "📖 **HOW TO USE THIS BOT:**\n\n"
         "1️⃣ **Type Your Query:**\n"
         "   Simply send the subject, faculty name, or book title in this chat.\n"
-        "   • *Examples:* `Hardik Sir`, `MV Sir`, `Business Economics`, `Law Question Bank`\n\n"
+        "   • *Examples:* `Hardik Sir`, `MV Sir`, `Business Economics`, `MTP Sept 26`\n\n"
         "2️⃣ **Browse Interactive Results:**\n"
-        "   The bot scans 900+ indexed files and presents matching options with buttons.\n\n"
+        "   The bot scans 900+ indexed files with crystal-clear subject titles on buttons.\n\n"
         "3️⃣ **Instant File Delivery:**\n"
         "   Tap any button and the bot will send the exact PDF file directly to your chat!\n\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
@@ -231,7 +236,7 @@ async def broadcast_handler(client: Client, message: Message):
         f"🔴 Failed: `{failed}`"
     )
 
-# ----------------- 1. DM Search Handler (Direct Delivery Buttons) -----------------
+# ----------------- 1. DM Search Handler (Caption Priority) -----------------
 @app.on_message(filters.text & filters.private & ~filters.command(["start", "index", "stats", "broadcast", "id"]))
 async def dm_search_handler(client: Client, message: Message):
     user_id = message.from_user.id
@@ -260,9 +265,9 @@ async def dm_search_handler(client: Client, message: Message):
     
     buttons = []
     for item in results:
-        name = item["file_name"][:38] + ("..." if len(item["file_name"]) > 38 else "")
-        # callback_data jo direct file bhejega
-        buttons.append([InlineKeyboardButton(f"📄 {name}", callback_data=f"get_{item['message_id']}")])
+        # Caption-first smart title
+        display_name = get_display_title(item)
+        buttons.append([InlineKeyboardButton(f"📄 {display_name}", callback_data=f"get_{item['message_id']}")])
     
     if total > 6:
         buttons.append([InlineKeyboardButton("Next Page ⏩", callback_data=f"page_1_{query_text}")])
@@ -272,7 +277,7 @@ async def dm_search_handler(client: Client, message: Message):
         reply_markup=InlineKeyboardMarkup(buttons)
     )
 
-# ----------------- 2. Group Search Handler -----------------
+# ----------------- 2. Group Search Handler (Caption Priority) -----------------
 @app.on_message(filters.chat(GROUP_ID) & filters.text)
 async def group_search_handler(client: Client, message: Message):
     text = message.text.strip()
@@ -300,8 +305,8 @@ async def group_search_handler(client: Client, message: Message):
     
     buttons = []
     for item in results:
-        name = item["file_name"][:35] + ("..." if len(item["file_name"]) > 35 else "")
-        buttons.append([InlineKeyboardButton(f"📄 {name}", callback_data=f"get_{item['message_id']}")])
+        display_name = get_display_title(item)
+        buttons.append([InlineKeyboardButton(f"📄 {display_name}", callback_data=f"get_{item['message_id']}")])
     
     if total > 5:
         buttons.append([InlineKeyboardButton("Next Page ⏩", callback_data=f"page_1_{query_text}")])
@@ -311,26 +316,24 @@ async def group_search_handler(client: Client, message: Message):
         reply_markup=InlineKeyboardMarkup(buttons)
     )
 
-# ----------------- 🚀 Direct File Send Callback (100% Reliable Unpacking) -----------------
+# ----------------- Direct File Delivery Callback -----------------
 @app.on_callback_query(filters.regex(r"^get_"))
 async def send_file_callback(client: Client, query: CallbackQuery):
     try:
         prefix, msg_id_str = query.data.split("_", 1)
         msg_id = int(msg_id_str)
         
-        # User ke DM mein direct channel se file copy karega
         await client.copy_message(
             chat_id=query.from_user.id,
             from_chat_id=CHANNEL_ID,
             message_id=msg_id
         )
-        await query.answer("✅ File aapke private chat (DM) mein bhej di gayi hai!", show_alert=False)
+        await query.answer("✅ File sent to your chat!", show_alert=False)
     except Exception as e:
         print(f"Send File Error: {e}")
-        # Agar user ne pehle bot ko start nahi kiya hai DM mein
         await query.answer("❌ File send nahi ho saki! Pehle bot ke DM mein jakar /start karein.", show_alert=True)
 
-# ----------------- Pagination Callback -----------------
+# ----------------- Pagination Callback (Caption Priority) -----------------
 @app.on_callback_query(filters.regex(r"^page_"))
 async def pagination_callback(client: Client, query: CallbackQuery):
     try:
@@ -345,8 +348,8 @@ async def pagination_callback(client: Client, query: CallbackQuery):
         
         buttons = []
         for item in results:
-            name = item["file_name"][:38] + ("..." if len(item["file_name"]) > 38 else "")
-            buttons.append([InlineKeyboardButton(f"📄 {name}", callback_data=f"get_{item['message_id']}")])
+            display_name = get_display_title(item)
+            buttons.append([InlineKeyboardButton(f"📄 {display_name}", callback_data=f"get_{item['message_id']}")])
         
         nav = []
         if page > 0:
@@ -372,10 +375,11 @@ async def inline_query_handler(client: Client, query: InlineQuery):
     inline_results = []
     
     for item in results:
+        display_name = get_display_title(item)
         if item.get("file_id"):
             inline_results.append(
                 InlineQueryResultCachedDocument(
-                    title=item["file_name"],
+                    title=display_name,
                     file_id=item["file_id"],
                     caption=item.get("caption", "")
                 )

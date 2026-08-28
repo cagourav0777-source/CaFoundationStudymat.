@@ -84,7 +84,7 @@ async def start_handler(client: Client, message: Message):
             InlineKeyboardButton("💬 Ask in Discussion Group", url="https://t.me/Caaspirants_26")
         ],
         [
-            InlineKeyboardButton("📢 Main Channel", url="https://t.me/Future_ca_minds")
+            InlineKeyboardButton("📢 Main Channel", url="https://t.me/Ca_minds")
         ]
     ])
     

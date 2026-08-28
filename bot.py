@@ -13,6 +13,18 @@ from database import (
 
 app = Client("notes_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
+# ----------------- Helper: Direct Channel Post Link Generator -----------------
+def get_post_link(chat_id, message_id: int):
+    chat_str = str(chat_id)
+    if chat_str.startswith("-100"):
+        internal_id = chat_str[4:]  # -100 remove karta hai
+        return f"https://t.me/c/{internal_id}/{message_id}"
+    elif chat_str.startswith("@"):
+        username = chat_str[1:]
+        return f"https://t.me/{username}/{message_id}"
+    else:
+        return f"https://t.me/c/{chat_str}/{message_id}"
+
 # ----------------- Force Subscribe Helpers -----------------
 async def check_fsub(client: Client, user_id: int):
     unsubbed = []
@@ -53,7 +65,7 @@ async def start_handler(client: Client, message: Message):
         f"👋 Namaste **{message.from_user.first_name}**!\n\n"
         "📚 Main is Channel ka Official Notes Search Bot hoon.\n\n"
         "🔍 **Notes Kaise Payein:**\n"
-        "Bas kisi bhi subject, teacher ya chapter ka naam likhkar send karein (e.g. `Hardik sir`, `Business Economics`)."
+        "Bas kisi bhi subject, teacher ya chapter ka naam likhkar send karein (e.g. `Hardik sir`, `Mv sir`, `Economics`)."
     )
 
 @app.on_message(filters.command("id") & filters.private)
@@ -190,7 +202,7 @@ async def broadcast_handler(client: Client, message: Message):
         f"🔴 Failed: `{failed}`"
     )
 
-# ----------------- DM Search System -----------------
+# ----------------- DM Search System (Direct Post Links) -----------------
 @app.on_message(filters.text & filters.private & ~filters.command(["start", "index", "stats", "broadcast", "id"]))
 async def search_handler(client: Client, message: Message):
     user_id = message.from_user.id
@@ -215,41 +227,25 @@ async def search_handler(client: Client, message: Message):
     buttons = []
     for item in results:
         name = item["file_name"][:38] + ("..." if len(item["file_name"]) > 38 else "")
-        buttons.append([InlineKeyboardButton(f"📄 {name}", callback_data=f"get_{item['message_id']}")])
+        # Direct URL link jo seedha channel ke usi post par le jayega
+        post_link = get_post_link(item.get("chat_id", CHANNEL_ID), item["message_id"])
+        buttons.append([InlineKeyboardButton(f"📄 {name}", url=post_link)])
     
     if total > 6:
         buttons.append([InlineKeyboardButton("Next Page ⏩", callback_data=f"page_1_{query_text}")])
     
     await message.reply_text(
-        f"🔍 **Search Results for:** `{query_text}`\n📊 Total Files: **{total}**\n\nNiche click karke file prapt karein:",
+        f"🔍 **Search Results for:** `{query_text}`\n📊 Total Files: **{total}**\n\nNiche click karke direct channel post par jayein:",
         reply_markup=InlineKeyboardMarkup(buttons)
     )
 
-# ----------------- Direct File Delivery Callback (100% Fixed) -----------------
-@app.on_callback_query(filters.regex(r"^get_"))
-async def send_file_callback(client: Client, query: CallbackQuery):
-    try:
-        # Callback data split karke index 1 se integer ID extract karna
-        data_parts = query.data.split("_")
-        msg_id = int(data_parts)
-        
-        await client.copy_message(
-            chat_id=query.from_user.id,
-            from_chat_id=CHANNEL_ID,
-            message_id=msg_id
-        )
-        await query.answer("✅ File bhej di gayi hai!")
-    except Exception as e:
-        await query.answer(f"❌ Error: {str(e)}", show_alert=True)
-        print(f"Send Error: {e}")
-
-# ----------------- Pagination Callback (100% Fixed) -----------------
+# ----------------- Pagination Callback -----------------
 @app.on_callback_query(filters.regex(r"^page_"))
 async def pagination_callback(client: Client, query: CallbackQuery):
     try:
-        data_parts = query.data.split("_", 2)
-        page = int(data_parts)
-        query_text = data_parts
+        parts = query.data.split("_", 2)
+        page = int(parts)
+        query_text = parts
         limit = 6
         skip = page * limit
         
@@ -260,7 +256,8 @@ async def pagination_callback(client: Client, query: CallbackQuery):
         buttons = []
         for item in results:
             name = item["file_name"][:38] + ("..." if len(item["file_name"]) > 38 else "")
-            buttons.append([InlineKeyboardButton(f"📄 {name}", callback_data=f"get_{item['message_id']}")])
+            post_link = get_post_link(item.get("chat_id", CHANNEL_ID), item["message_id"])
+            buttons.append([InlineKeyboardButton(f"📄 {name}", url=post_link)])
         
         nav = []
         if page > 0:

@@ -129,7 +129,7 @@ async def on_bot_added(client: Client, chat_member: ChatMemberUpdated):
             await add_group(chat.id, chat.title or "Group")
             print(f"👥 Bot added to Group: {chat.title} ({chat.id})")
 
-# ----------------- 🌟 /start Command & Deep-Link Delivery (Clean Unpack) -----------------
+# ----------------- 🌟 /start Command & Deep-Link Delivery -----------------
 @app.on_message(filters.command("start") & filters.private)
 async def start_handler(client: Client, message: Message):
     user_id = message.from_user.id
@@ -144,7 +144,7 @@ async def start_handler(client: Client, message: Message):
             reply_markup=get_fsub_keyboard(unsubbed)
         )
     
-    # Check if user clicked from group deep-link (e.g. /start get_12345)
+    # Deep Link Handler: Group click se DM mein file delivery
     raw_text = message.text.strip()
     if " " in raw_text:
         cmd, param = raw_text.split(" ", 1)
@@ -180,7 +180,7 @@ async def start_handler(client: Client, message: Message):
         f"3️⃣ **Instant File Delivery:**\n"
         f"   Tap any button and get the exact PDF, photo, or drive link instantly in this chat!\n\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"💡 *Pro Tip: Add this bot to any study group to search notes directly with your friends!*"
+        f"💡 *Pro Tip: Add this bot to any study group to search notes using `/search <topic>`!*"
     )
     
     await message.reply_text(welcome_text)
@@ -349,7 +349,6 @@ async def broadcast_handler(client: Client, message: Message):
     u_success, u_failed = 0, 0
     g_success, g_failed = 0, 0
     
-    # 1. Users DM
     for u_id in users:
         try:
             if message.reply_to_message:
@@ -364,7 +363,6 @@ async def broadcast_handler(client: Client, message: Message):
         except Exception:
             u_failed += 1
             
-    # 2. Groups
     for g_id in groups:
         try:
             if message.reply_to_message:
@@ -388,7 +386,7 @@ async def broadcast_handler(client: Client, message: Message):
         f"📊 **Total Delivered:** `{u_success + g_success}`"
     )
 
-# ----------------- 1. DM Search Handler -----------------
+# ----------------- 1. DM Search Handler (Normal Text Allowed in DM) -----------------
 @app.on_message(filters.text & filters.private & ~filters.command(["start", "index", "stats", "broadcast", "id", "startfsub", "stopfsub", "fsub"]))
 async def dm_search_handler(client: Client, message: Message):
     user_id = message.from_user.id
@@ -423,34 +421,34 @@ async def dm_search_handler(client: Client, message: Message):
         reply_markup=InlineKeyboardMarkup(buttons)
     )
 
-# ----------------- 2. Universal Group Search & Auto-Register Handler -----------------
+# ----------------- 2. 🔇 STRICT Group Search (ZERO SPAM - Command Only) -----------------
 @app.on_message(filters.group & filters.text)
 async def group_search_handler(client: Client, message: Message):
-    # Har aane wale message par group ko register karega
+    # Har message par group ko database mein register karega
     await add_group(message.chat.id, message.chat.title or "Group")
     
     text = message.text.strip()
-    is_command = False
     
-    if text.startswith("/search") or text.startswith("/notes") or text.startswith("/get"):
-        is_command = True
-        if " " not in text:
-            return await message.reply_text("❗ Usage: `/search topic_name` (e.g. `/search hardik sir`)")
-        cmd, query_text = text.split(" ", 1)
-        query_text = query_text.strip()
-        if len(query_text) < 2:
-            return await message.reply_text("❗ Please type at least 2 characters.")
-    else:
-        if len(text) < 3 or text.lower() in ["hi", "hello", "gm", "gn", "ok", "thanks", "bye", "hlo", "yes", "no"]:
-            return
-        query_text = text
+    # 🔒 STRICT CHECK: Agar message /search ya /notes se start NAHI hota, toh 100% IGNORE karega (Zero Spam)
+    if not (text.startswith("/search") or text.startswith("/notes") or text.startswith("/get")):
+        return
     
-    results, total = await search_files(query_text, limit=5, skip=0)
+    if " " not in text:
+        return await message.reply_text(
+            "❗ **Usage:** `/search topic_name`\n"
+            "• *Example:* `/search Hardik sir Law` ya `/search Business Economics`"
+        )
+    
+    cmd, query_text = text.split(" ", 1)
+    query_text = query_text.strip()
+    
+    if len(query_text) < 2:
+        return await message.reply_text("❗ Kripya kam se kam 2 akshar likhein.")
+    
+    results, total = await search_files(query_text, limit=6, skip=0)
     
     if not results:
-        if is_command:
-            await message.reply_text(f"❌ No notes found for `{query_text}`.")
-        return
+        return await message.reply_text(f"❌ **'{query_text}'** ke related koi notes nahi mile.")
     
     bot_username = (await client.get_me()).username
     buttons = []
@@ -460,7 +458,7 @@ async def group_search_handler(client: Client, message: Message):
         buttons.append([InlineKeyboardButton(display_name, url=deep_link)])
     
     await message.reply_text(
-        f"📚 **Results for {message.from_user.mention}:** `{query_text}` (Total: {total})\nTap below to get the file in your DM:",
+        f"📚 **Search Results for {message.from_user.mention}:** `{query_text}` (Total: {total})\nTap any button below to get the file in your DM:",
         reply_markup=InlineKeyboardMarkup(buttons)
     )
 

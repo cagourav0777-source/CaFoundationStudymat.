@@ -189,7 +189,7 @@ async def start_handler(client: Client, message: Message):
         f"✨ **Welcome to CA Notes Master Bot!** ✨\n\n"
         f"👋 Hi **{first_name}**!\n\n"
         f"🎯 **What I Do:**\n"
-        f"Find CA Foundation study materials instantly - Notes, Question Banks, MTPs, RTPs & Drive Links!\n\n"
+        f"Find CA Foundation & Inter study materials instantly - Notes, Question Banks, MTPs, RTPs & Drive Links!\n\n"
         f"🔍 **How to Search:**\n"
         f"Just type any keyword here:\n"
         f"• `Hardik Sir Law`\n"
@@ -200,6 +200,7 @@ async def start_handler(client: Client, message: Message):
     )
 
     buttons = [
+        [InlineKeyboardButton("➕ Add Me to Group", url=f"https://t.me/{(await client.get_me()).username}?startgroup=true")],
         [InlineKeyboardButton("❓ Help & Commands", callback_data="help_menu")]
     ]
 
@@ -221,7 +222,7 @@ async def help_handler(client: Client, message: Message):
         "━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         "**🔍 How to Search:**\n"
         "• In DM: Just type any keyword directly\n"
-        "• In Groups: Use `/search <keyword>`, `/notes <keyword>`, or `/get <keyword>`\n\n"
+        "• In Groups: Use `/notes <keyword>`\n\n"
         "**✨ Search Examples:**\n"
         "• `Hardik Sir Law`\n"
         "• `Business Economics MTP`\n"
@@ -231,24 +232,15 @@ async def help_handler(client: Client, message: Message):
         "• `/start` - Start the bot\n"
         "• `/help` - Show this help message\n"
         "• `/id` - Get your user ID or group ID\n"
-        "• `/search <query>` - Search in groups\n"
-        "• `/notes <query>` - Alternative search\n"
-        "• `/get <query>` - Alternative search\n\n"
+        "• `/notes <query>` - Search in groups\n\n"
         "**💡 Pro Tips:**\n"
         "• Use specific keywords for better results\n"
         "• Try faculty names, subject names, or material types\n"
         "• Add bot to your study group for easy access\n"
-        "• Use Next/Prev buttons to browse more results\n\n"
-        "**🆘 Need Support?**\n"
-        "Join our discussion group for help!"
+        "• Use Next/Prev buttons to browse more results"
     )
 
-    buttons = [
-        [InlineKeyboardButton("📢 Join Channel", url="https://t.me/Ca_minds")],
-        [InlineKeyboardButton("💬 Support Group", url="https://t.me/Caaspirants_26")]
-    ]
-
-    await message.reply_text(help_text, reply_markup=InlineKeyboardMarkup(buttons))
+    await message.reply_text(help_text)
 
 # Help callback handler
 @app.on_callback_query(filters.regex("^help_menu$"))
@@ -309,7 +301,6 @@ async def about_handler(client: Client, message: Message):
 
     buttons = [
         [InlineKeyboardButton("📢 Channel", url="https://t.me/Ca_minds")],
-        [InlineKeyboardButton("💬 Group", url="https://t.me/Caaspirants_26")],
         [InlineKeyboardButton("👨‍💻 Developer", url="https://t.me/Cagourav_18")]
     ]
 

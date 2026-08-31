@@ -628,10 +628,14 @@ async def inline_query_handler(client: Client, query: InlineQuery):
     await query.answer(inline_results, cache_time=5)
 
 # ----------------- Main Execution -----------------
+@app.on_start()
+async def bot_start():
+    """Initialize database when bot starts"""
+    await init_db()
+    logger.info("🚀 Notes Search Bot Started Successfully!")
+
 if __name__ == "__main__":
     try:
-        asyncio.run(init_db())
-        logger.info("🚀 Notes Search Bot Started Successfully!")
         app.run()
     except Exception as e:
         logger.error(f"❌ Failed to start bot: {e}")

@@ -292,11 +292,10 @@ async def about_handler(client: Client, message: Message):
         "  • Multi-format support\n"
         "  • Group & DM integration\n"
         "  • Real-time indexing\n"
-        "  • Force subscribe system\n"
         "  • Broadcast messaging\n\n"
         "👨‍💻 **Developer:** Gourav\n"
         "📅 **Last Updated:** August 2026\n\n"
-        "💡 **Purpose:** Making CA study materials accessible to all aspirants instantly!"
+        "💡 **Purpose:** Making CA Foundation study materials accessible to all aspirants instantly!"
     )
 
     buttons = [

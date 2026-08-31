@@ -718,8 +718,7 @@ if __name__ == "__main__":
     loop = asyncio.get_event_loop()
     try:
         loop.run_until_complete(init_db())
-        logger.info("🚀 CA Notes Master Bot Started Successfully!")
-        logger.info(f"📊 Bot Username: @{app.get_me().username if hasattr(app, 'get_me') else 'Loading...'}")
+        logger.info("🚀 CA Notes Master Bot Starting...")
         logger.info(f"👥 Admins: {len(ADMINS)}")
         logger.info(f"📢 Channel ID: {CHANNEL_ID}")
         app.run()

@@ -189,7 +189,7 @@ async def start_handler(client: Client, message: Message):
         f"✨ **Welcome to CA Notes Master Bot!** ✨\n\n"
         f"👋 Hi **{first_name}**!\n\n"
         f"🎯 **What I Do:**\n"
-        f"Find CA Foundation & Inter study materials instantly - Notes, Question Banks, MTPs, RTPs & Drive Links!\n\n"
+        f"Find CA Foundation study materials instantly - Notes, Question Banks, MTPs, RTPs & Drive Links!\n\n"
         f"🔍 **How to Search:**\n"
         f"Just type any keyword here:\n"
         f"• `Hardik Sir Law`\n"

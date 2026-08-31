@@ -300,7 +300,6 @@ async def about_handler(client: Client, message: Message):
     )
 
     buttons = [
-        [InlineKeyboardButton("📢 Channel", url="https://t.me/Ca_minds")],
         [InlineKeyboardButton("👨‍💻 Developer", url="https://t.me/Cagourav_18")]
     ]
 

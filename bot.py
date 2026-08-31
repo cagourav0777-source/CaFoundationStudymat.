@@ -186,29 +186,20 @@ async def start_handler(client: Client, message: Message):
                 return await message.reply_text(f"❌ Error delivering file: {str(e)}")
 
     welcome_text = (
-        f"✨ **𝐖𝐄𝐋𝐂𝐎𝐌𝐄 𝐓𝐎 𝐂𝐀 𝐍𝐎𝐓𝐄𝐒 𝐌𝐀𝐒𝐓𝐄𝐑** ✨\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"👋 Hello **{first_name}**, your personal automated search engine for **CA Foundation & Inter** study resources.\n\n"
-        f"⚡ Find **Notes, Question Banks, MTPs, RTPs, Chart Books & Google Drive Links** in seconds!\n\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"🚀 **𝐇𝐎𝐖 𝐓𝐎 𝐒𝐄𝐀𝐑𝐂𝐇:**\n\n"
-        f"1️⃣ **Send Any Keyword:**\n"
-        f"   Just type what you need directly in this chat:\n"
-        f"   • *Faculty:* `Hardik Sir`, `MV Sir`, `Shubham Singhal`\n"
-        f"   • *Subjects:* `Business Economics`, `Law`, `Accounts`, `QA`\n"
-        f"   • *Material:* `Question Bank`, `MTP Sept 26`, `Drive Links`\n\n"
-        f"2️⃣ **Smart Results:**\n"
-        f"   The bot scans all files, photos & Drive folders with clear titles.\n\n"
-        f"3️⃣ **Instant File Delivery:**\n"
-        f"   Tap any button and get the exact PDF, photo, or drive link instantly in this chat!\n\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"💡 *Pro Tip: Add this bot to any study group to search notes using `/search <topic>`!*\n\n"
-        f"📌 **Quick Commands:** /help /id"
+        f"✨ **Welcome to CA Notes Master Bot!** ✨\n\n"
+        f"👋 Hi **{first_name}**!\n\n"
+        f"🎯 **What I Do:**\n"
+        f"Find CA Foundation & Inter study materials instantly - Notes, Question Banks, MTPs, RTPs & Drive Links!\n\n"
+        f"🔍 **How to Search:**\n"
+        f"Just type any keyword here:\n"
+        f"• `Hardik Sir Law`\n"
+        f"• `Business Economics MTP`\n"
+        f"• `Question Bank Sept 26`\n\n"
+        f"⚡ Get instant results with one tap!\n\n"
+        f"💡 **Pro Tip:** Add me to your study group and use `/notes <topic>` command!"
     )
 
     buttons = [
-        [InlineKeyboardButton("📚 Join Notes Channel", url="https://t.me/Ca_minds")],
-        [InlineKeyboardButton("💬 Discussion Group", url="https://t.me/Caaspirants_26")],
         [InlineKeyboardButton("❓ Help & Commands", callback_data="help_menu")]
     ]
 
@@ -311,18 +302,15 @@ async def about_handler(client: Client, message: Message):
         "  • Real-time indexing\n"
         "  • Force subscribe system\n"
         "  • Broadcast messaging\n\n"
-        "👨‍💻 **Developer:** CA Study Team\n"
+        "👨‍💻 **Developer:** Gourav\n"
         "📅 **Last Updated:** August 2026\n\n"
-        "💡 **Purpose:** Making CA study materials accessible to all aspirants instantly!\n\n"
-        "🔗 **Links:**\n"
-        "  • GitHub: [Coming Soon]\n"
-        "  • Support: @Caaspirants_26"
+        "💡 **Purpose:** Making CA study materials accessible to all aspirants instantly!"
     )
 
     buttons = [
         [InlineKeyboardButton("📢 Channel", url="https://t.me/Ca_minds")],
         [InlineKeyboardButton("💬 Group", url="https://t.me/Caaspirants_26")],
-        [InlineKeyboardButton("❓ Help", callback_data="help_menu")]
+        [InlineKeyboardButton("👨‍💻 Developer", url="https://t.me/Cagourav_18")]
     ]
 
     await message.reply_text(about_text, reply_markup=InlineKeyboardMarkup(buttons))
@@ -596,13 +584,13 @@ async def group_search_handler(client: Client, message: Message):
     
     text = message.text.strip()
     
-    if not (text.startswith("/search") or text.startswith("/notes") or text.startswith("/get")):
+    if not text.startswith("/notes"):
         return
-    
+
     if " " not in text:
         return await message.reply_text(
-            "❗ **Usage:** `/search topic_name`\n"
-            "• *Example:* `/search Hardik sir Law` ya `/search Business Economics`"
+            "❗ **Usage:** `/notes topic_name`\n"
+            "• *Example:* `/notes Hardik sir Law` ya `/notes Business Economics`"
         )
     
     cmd, query_text = text.split(" ", 1)

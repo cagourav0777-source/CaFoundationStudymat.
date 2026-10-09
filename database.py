@@ -197,10 +197,28 @@ async def search_files(query: str, limit: int = 6, skip: int = 0):
         results = [doc async for doc in cursor]
         return results, total_and
     
-    # 2. Smart Fallback (Agar 'sir' ya 'notes' ki wajah se file miss ho rahi ho, to main keyword se search karega)
+    # 2. Smart Fallback 1: Filter filler words like 'sir', 'notes' and try strict AND on remaining words
     ignore_words = {"sir", "mam", "notes", "pdf", "book", "for", "by", "ka", "ki", "ke", "all"}
     primary_words = [w for w in words if len(w) >= 3 and w.lower() not in ignore_words]
     
+    if primary_words and len(primary_words) < len(words):
+        regex_and_primary = [
+            {
+                "$or": [
+                    {"file_name": {"$regex": re.escape(w), "$options": "i"}},
+                    {"caption": {"$regex": re.escape(w), "$options": "i"}}
+                ]
+            }
+            for w in primary_words
+        ]
+        filter_and_primary = {"$and": regex_and_primary}
+        total_primary = await files_col.count_documents(filter_and_primary)
+        if total_primary > 0:
+            cursor = files_col.find(filter_and_primary).sort("message_id", -1).skip(skip).limit(limit)
+            results = [doc async for doc in cursor]
+            return results, total_primary
+
+    # 3. Smart Fallback 2: Agar abhi bhi koi result na ho, tab OR matching karein
     if not primary_words:
         primary_words = words
         

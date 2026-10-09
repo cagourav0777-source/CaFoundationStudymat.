@@ -2,6 +2,7 @@ import asyncio
 import re
 import logging
 import sys
+import os
 from pyrogram import Client, filters, enums
 from pyrogram.types import (
     Message, InlineKeyboardMarkup, InlineKeyboardButton,
@@ -36,6 +37,16 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = Client("notes_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
+
+# Cached Bot Username to avoid repeated API calls
+BOT_USERNAME = None
+
+async def get_bot_username(client: Client) -> str:
+    global BOT_USERNAME
+    if not BOT_USERNAME:
+        me = client.me or await client.get_me()
+        BOT_USERNAME = me.username
+    return BOT_USERNAME
 
 # ----------------- Helper: Message Extractor -----------------
 def extract_message_data(msg: Message):
@@ -100,14 +111,17 @@ def get_display_title(item):
     else:
         title = file_name or "Study Material"
         
-    if "http://" in caption or "https://" in caption or "drive.google.com" in caption:
-        icon = "🔗"
-    elif media_type == "photo" or file_name.lower().endswith(('.jpg', '.jpeg', '.png')):
+    # Check media types first before checking text link
+    if media_type == "photo" or file_name.lower().endswith(('.jpg', '.jpeg', '.png')):
         icon = "🖼"
     elif media_type == "video":
         icon = "🎥"
     elif media_type == "audio":
         icon = "🎵"
+    elif media_type == "document" or file_name.lower().endswith(('.pdf', '.doc', '.docx', '.zip', '.rar')):
+        icon = "📄"
+    elif "http://" in caption or "https://" in caption or "drive.google.com" in caption:
+        icon = "🔗"
     else:
         icon = "📄"
         
@@ -116,6 +130,15 @@ def get_display_title(item):
     return f"{icon} {title}"
 
 # ----------------- Force Subscribe Helpers -----------------
+def format_fsub_url(val) -> str:
+    """Format chat username, ID, or invite link into a valid clickable URL"""
+    val = str(val).strip()
+    if val.startswith("http://") or val.startswith("https://"):
+        return val
+    if val.startswith("@"):
+        return f"https://t.me/{val[1:]}"
+    return f"https://t.me/{val}"
+
 async def check_fsub(client: Client, user_id: int):
     is_fsub_active = await get_fsub_status()
     if not is_fsub_active:
@@ -123,21 +146,44 @@ async def check_fsub(client: Client, user_id: int):
     
     unsubbed = []
     for item in FSUB_CHATS:
-        chat = item["chat"]
+        chat_target = item.get("chat_id") or item.get("chat")
+        if not chat_target:
+            continue
+            
         try:
-            member = await client.get_chat_member(chat, user_id)
+            member = await client.get_chat_member(chat_target, user_id)
             if member.status in [enums.ChatMemberStatus.BANNED, enums.ChatMemberStatus.LEFT]:
                 unsubbed.append(item)
         except UserNotParticipant:
             unsubbed.append(item)
-        except Exception:
+        except Exception as e:
+            logger.warning(f"FSUB check failed for {item.get('name')} ({chat_target}): {e}")
+            # Try fallback to username/link if chat_target was ID
+            fallback = item.get("link") or item.get("chat")
+            if fallback and str(fallback) != str(chat_target) and not str(fallback).startswith("-100"):
+                try:
+                    member = await client.get_chat_member(fallback, user_id)
+                    if member.status in [enums.ChatMemberStatus.BANNED, enums.ChatMemberStatus.LEFT]:
+                        unsubbed.append(item)
+                    continue
+                except UserNotParticipant:
+                    unsubbed.append(item)
+                    continue
+                except Exception as ex2:
+                    logger.warning(f"FSUB fallback check also failed for {fallback}: {ex2}")
+            
+            # If error is ChatAdminRequired, log error so admin knows to promote bot
+            if "CHAT_ADMIN_REQUIRED" in str(e).upper():
+                logger.error(f"❌ Bot must be an ADMIN with invite permissions in {item.get('name')} ({chat_target}) to verify members!")
             continue
+            
     return unsubbed
 
 def get_fsub_keyboard(unsubbed_list):
     buttons = []
     for item in unsubbed_list:
-        link = f"https://t.me/{item['chat'].replace('@', '')}"
+        raw_link = item.get("link") or item.get("chat") or item.get("chat_id")
+        link = format_fsub_url(raw_link)
         buttons.append([InlineKeyboardButton(f"Join {item['name']}", url=link)])
     buttons.append([InlineKeyboardButton("🔄 Verify / Try Again", callback_data="check_fsub_again")])
     return InlineKeyboardMarkup(buttons)
@@ -185,6 +231,7 @@ async def start_handler(client: Client, message: Message):
                 logger.error(f"Deep link send error: {e}")
                 return await message.reply_text(f"❌ Error delivering file: {str(e)}")
 
+    bot_username = await get_bot_username(client)
     welcome_text = (
         f"✨ **Welcome to CA Notes Master Bot!** ✨\n\n"
         f"👋 Hi **{first_name}**!\n\n"
@@ -196,11 +243,11 @@ async def start_handler(client: Client, message: Message):
         f"• `Business Economics MTP`\n"
         f"• `Question Bank Sept 26`\n\n"
         f"⚡ Get instant results with one tap!\n\n"
-        f"💡 **Pro Tip:** Add me to your study group and use `/notes <topic>` command!"
+        f"💡 **Pro Tip:** Add me to your study group and use `/notes <topic>` or `/search <topic>` command!"
     )
 
     buttons = [
-        [InlineKeyboardButton("➕ Add Me to Group", url=f"https://t.me/{(await client.get_me()).username}?startgroup=true")],
+        [InlineKeyboardButton("➕ Add Me to Group", url=f"https://t.me/{bot_username}?startgroup=true")],
         [InlineKeyboardButton("❓ Help & Commands", callback_data="help_menu")]
     ]
 
@@ -222,7 +269,7 @@ async def help_handler(client: Client, message: Message):
         "━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         "**🔍 How to Search:**\n"
         "• In DM: Just type any keyword directly\n"
-        "• In Groups: Use `/notes <keyword>`\n\n"
+        "• In Groups: Use `/search <keyword>` or `/notes <keyword>`\n\n"
         "**✨ Search Examples:**\n"
         "• `Hardik Sir Law`\n"
         "• `Business Economics MTP`\n"
@@ -232,7 +279,9 @@ async def help_handler(client: Client, message: Message):
         "• `/start` - Start the bot\n"
         "• `/help` - Show this help message\n"
         "• `/id` - Get your user ID or group ID\n"
-        "• `/notes <query>` - Search in groups\n\n"
+        "• `/search <query>` or `/notes <query>` - Search in groups\n"
+        "• `/ping` - Check bot response speed\n"
+        "• `/about` - About this bot\n\n"
         "**💡 Pro Tips:**\n"
         "• Use specific keywords for better results\n"
         "• Try faculty names, subject names, or material types\n"
@@ -246,23 +295,19 @@ async def help_handler(client: Client, message: Message):
 @app.on_callback_query(filters.regex("^help_menu$"))
 async def help_callback(client: Client, query: CallbackQuery):
     help_text = (
-        "📖 **CA Notes Master - Help Guide**\n"
+        "📖 **CA Notes Master - Quick Guide**\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         "**🔍 How to Search:**\n"
         "• In DM: Just type any keyword directly\n"
-        "• In Groups: Use `/search <keyword>`\n\n"
+        "• In Groups: Use `/search <keyword>` or `/notes <keyword>`\n\n"
         "**✨ Search Examples:**\n"
         "• `Hardik Sir Law`\n"
         "• `Business Economics MTP`\n"
         "• `Question Bank Sept 26`\n\n"
         "**📋 Commands:**\n"
-        "• `/help` - Show help\n"
+        "• `/help` - Show complete help\n"
         "• `/id` - Get your ID\n"
-        "• `/search` - Search in groups\n\n"
-        "**💡 Pro Tips:**\n"
-        "• Use specific keywords\n"
-        "• Try faculty or subject names\n"
-        "• Browse with Next/Prev buttons\n\n"
+        "• `/ping` - Bot speed check\n\n"
         "Type `/help` for detailed guide!"
     )
     await query.answer()
@@ -289,13 +334,13 @@ async def about_handler(client: Client, message: Message):
         "💾 **Database:** MongoDB\n"
         "🚀 **Features:**\n"
         "  • Smart AI-powered search\n"
-        "  • Multi-format support\n"
+        "  • Multi-format support (PDFs, Photos, Links)\n"
         "  • Group & DM integration\n"
         "  • Real-time indexing\n"
         "  • Broadcast messaging\n\n"
         "👨‍💻 **Developer:** Gourav\n"
         "📅 **Last Updated:** August 2026\n\n"
-        "💡 **Purpose:** Making CA Foundation study materials accessible to all aspirants instantly!"
+        "💡 **Purpose:** Making CA Foundation & Inter study materials accessible to all aspirants instantly!"
     )
 
     buttons = [
@@ -314,25 +359,31 @@ def admin_only():
 @app.on_message(filters.command("logs") & admin_only())
 async def logs_handler(client: Client, message: Message):
     try:
+        if not os.path.exists('bot.log'):
+            return await message.reply_text("❌ Log file (bot.log) not found.")
+
         with open('bot.log', 'r', encoding='utf-8') as f:
             lines = f.readlines()
             last_50 = ''.join(lines[-50:])
 
-        if not last_50:
+        if not last_50.strip():
             return await message.reply_text("✅ No logs found. Bot is running clean!")
 
-        # Split into chunks if too long
-        if len(last_50) > 4000:
-            last_50 = last_50[-4000:]
-
-        await message.reply_document(
-            document='bot.log',
-            caption="📄 **Bot Logs (Last 50 lines)**"
-        )
-    except FileNotFoundError:
-        await message.reply_text("❌ Log file not found.")
+        if len(last_50) <= 3900:
+            await message.reply_text(f"📄 **Recent Logs (Last 50 lines):**\n```\n{last_50}\n```")
+        else:
+            temp_log_path = "recent_logs.txt"
+            with open(temp_log_path, "w", encoding="utf-8") as temp_f:
+                temp_f.write(last_50)
+            await message.reply_document(
+                document=temp_log_path,
+                caption="📄 **Recent Logs (Last 50 lines)**"
+            )
+            if os.path.exists(temp_log_path):
+                os.remove(temp_log_path)
     except Exception as e:
         await message.reply_text(f"❌ Error reading logs: {e}")
+
 @app.on_message(filters.command(["startfsub", "stopfsub", "fsub"]) & filters.private)
 async def fsub_toggle_handler(client: Client, message: Message):
     if message.from_user.id not in ADMINS:
@@ -364,10 +415,13 @@ async def fsub_callback(client: Client, query: CallbackQuery):
     if unsubbed:
         return await query.answer("❌ You haven't joined all required channels yet!", show_alert=True)
     
-    await query.message.delete()
+    try:
+        await query.message.delete()
+    except Exception:
+        pass
     await query.message.reply_text("✅ **Access Granted!** You can now search for any notes or study material.")
 
-# ----------------- Real-Time Channel Auto-Indexer -----------------
+# ----------------- Real-Time Channel Auto-Indexer & Edit Listener -----------------
 @app.on_message(filters.chat(CHANNEL_ID))
 async def channel_post_listener(client: Client, message: Message):
     data = extract_message_data(message)
@@ -383,6 +437,10 @@ async def channel_post_listener(client: Client, message: Message):
         message_id=data["message_id"],
         media_type=data["media_type"]
     )
+
+@app.on_edited_message(filters.chat(CHANNEL_ID))
+async def channel_post_edited_listener(client: Client, message: Message):
+    await channel_post_listener(client, message)
 
 # ----------------- Admin Command: /index -----------------
 @app.on_message(filters.command("index") & filters.private)
@@ -400,6 +458,7 @@ async def index_channel_handler(client: Client, message: Message):
         return await status_msg.edit_text(f"❌ **Channel Access Error:** `{str(e)}`")
     
     count = 0
+    last_reported = 0
     batch_size = INDEXING_BATCH_SIZE
 
     for i in range(last_id, 0, -batch_size):
@@ -425,9 +484,10 @@ async def index_channel_handler(client: Client, message: Message):
                 )
                 count += 1
 
-            if count > 0 and count % 50 == 0:
+            if count - last_reported >= 50:
                 try:
                     await status_msg.edit_text(f"⏳ **Indexing in progress:** `{count}` items saved...")
+                    last_reported = count
                 except Exception:
                     pass
             await asyncio.sleep(INDEXING_SLEEP)
@@ -528,7 +588,9 @@ async def broadcast_handler(client: Client, message: Message):
     )
 
 # ----------------- 1. DM Search Handler (With Next Page Button) -----------------
-@app.on_message(filters.text & filters.private & ~filters.command(["start", "index", "stats", "broadcast", "id", "startfsub", "stopfsub", "fsub", "help", "ping", "about"]))
+EXCLUDED_COMMANDS = ["start", "index", "stats", "broadcast", "id", "startfsub", "stopfsub", "fsub", "help", "ping", "about", "logs"]
+
+@app.on_message(filters.text & filters.private & ~filters.command(EXCLUDED_COMMANDS))
 async def dm_search_handler(client: Client, message: Message):
     user_id = message.from_user.id
     unsubbed = await check_fsub(client, user_id)
@@ -557,34 +619,39 @@ async def dm_search_handler(client: Client, message: Message):
         display_name = get_display_title(item)
         buttons.append([InlineKeyboardButton(display_name, callback_data=f"get_{item['message_id']}")])
 
-    # Next Page button if more than limit
+    # Next Page button if more than limit (truncate query for 64-byte callback limit)
+    safe_query = query_text[:35]
     if total > SEARCH_RESULTS_LIMIT:
-        buttons.append([InlineKeyboardButton("Next Page ⏩", callback_data=f"page_1_{query_text}")])
+        buttons.append([InlineKeyboardButton("Next Page ⏩", callback_data=f"page_1_{safe_query}")])
 
     await message.reply_text(
         f"🔍 **Search Results for:** `{query_text}`\n📊 **Total Found:** `{total}`\n\nTap below to receive the material directly:",
         reply_markup=InlineKeyboardMarkup(buttons)
     )
 
-# ----------------- 2. Group Search Handler (With Next Page Button Included) -----------------
+# ----------------- 2. Group Search Handler (Supports /search, /notes, /get) -----------------
 @app.on_message(filters.group & filters.text)
 async def group_search_handler(client: Client, message: Message):
-    await add_group(message.chat.id, message.chat.title or "Group")
-    
     text = message.text.strip()
-    
-    if not text.startswith("/notes"):
+    parts = text.split(" ", 1)
+    raw_cmd = parts[0].lower()
+
+    valid_cmds = ["/notes", "/search", "/get"]
+    if not any(raw_cmd == cmd or raw_cmd.startswith(f"{cmd}@") for cmd in valid_cmds):
         return
 
-    if " " not in text:
+    # Add group only when a valid bot command is triggered (avoids DB write on every message)
+    await add_group(message.chat.id, message.chat.title or "Group")
+
+    if len(parts) < 2 or not parts[1].strip():
+        cmd_display = raw_cmd.split("@")[0]
         return await message.reply_text(
-            "❗ **Usage:** `/notes topic_name`\n"
-            "• *Example:* `/notes Hardik sir Law` ya `/notes Business Economics`"
+            f"❗ **Usage:** `{cmd_display} topic_name`\n"
+            f"• *Example:* `{cmd_display} Hardik sir Law` or `{cmd_display} Business Economics`"
         )
-    
-    cmd, query_text = text.split(" ", 1)
-    query_text = query_text.strip()
-    
+
+    query_text = parts[1].strip()
+
     if len(query_text) < 2:
         return await message.reply_text("❗ Please type at least 2 characters.")
 
@@ -593,16 +660,17 @@ async def group_search_handler(client: Client, message: Message):
     if not results:
         return await message.reply_text(f"❌ No notes found for `{query_text}`.")
 
-    bot_username = (await client.get_me()).username
+    bot_username = await get_bot_username(client)
     buttons = []
     for item in results:
         display_name = get_display_title(item)
         deep_link = f"https://t.me/{bot_username}?start=get_{item['message_id']}"
         buttons.append([InlineKeyboardButton(display_name, url=deep_link)])
 
-    # Next Page button for group search
+    # Next Page button for group search (safely bounded)
+    safe_query = query_text[:35]
     if total > SEARCH_RESULTS_LIMIT:
-        buttons.append([InlineKeyboardButton("Next Page ⏩", callback_data=f"page_1_{query_text}")])
+        buttons.append([InlineKeyboardButton("Next Page ⏩", callback_data=f"page_1_{safe_query}")])
 
     await message.reply_text(
         f"📚 **Search Results for {message.from_user.mention}:** `{query_text}` (Total: {total})\nTap any button below to get the file in your DM:",
@@ -640,9 +708,8 @@ async def pagination_callback(client: Client, query: CallbackQuery):
         if not results:
             return await query.answer("No more results available.", show_alert=True)
 
-        # Check if click is in group or DM
         is_group = query.message.chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]
-        bot_username = (await client.get_me()).username
+        bot_username = await get_bot_username(client)
 
         buttons = []
         for item in results:
@@ -653,11 +720,12 @@ async def pagination_callback(client: Client, query: CallbackQuery):
             else:
                 buttons.append([InlineKeyboardButton(display_name, callback_data=f"get_{item['message_id']}")])
 
+        safe_query = query_text[:35]
         nav = []
         if page > 0:
-            nav.append(InlineKeyboardButton("⏪ Prev", callback_data=f"page_{page - 1}_{query_text}"))
+            nav.append(InlineKeyboardButton("⏪ Prev", callback_data=f"page_{page - 1}_{safe_query}"))
         if total > skip + limit:
-            nav.append(InlineKeyboardButton("Next ⏩", callback_data=f"page_{page + 1}_{query_text}"))
+            nav.append(InlineKeyboardButton("Next ⏩", callback_data=f"page_{page + 1}_{safe_query}"))
         if nav:
             buttons.append(nav)
 
@@ -677,11 +745,12 @@ async def inline_query_handler(client: Client, query: InlineQuery):
     results, _ = await search_files(text, limit=10)
     inline_results = []
     
-    for item in results:
+    for idx, item in enumerate(results):
         display_name = get_display_title(item)
         if item.get("file_id"):
             inline_results.append(
                 InlineQueryResultCachedDocument(
+                    id=str(item.get("message_id") or idx),
                     title=display_name,
                     file_id=item["file_id"],
                     caption=item.get("caption", "")

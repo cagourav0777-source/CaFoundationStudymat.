@@ -10,6 +10,8 @@ from pyrogram.types import (
 )
 from pyrogram.errors import UserNotParticipant, FloodWait
 from dotenv import load_dotenv
+from flask import Flask
+import threading
 
 # Load environment variables from .env file
 load_dotenv()
@@ -111,7 +113,6 @@ def get_display_title(item):
     else:
         title = file_name or "Study Material"
         
-    # Check media types first before checking text link
     if media_type == "photo" or file_name.lower().endswith(('.jpg', '.jpeg', '.png')):
         icon = "🖼"
     elif media_type == "video":
@@ -131,7 +132,6 @@ def get_display_title(item):
 
 # ----------------- Force Subscribe Helpers -----------------
 def format_fsub_url(val) -> str:
-    """Format chat username, ID, or invite link into a valid clickable URL"""
     val = str(val).strip()
     if val.startswith("http://") or val.startswith("https://"):
         return val
@@ -158,7 +158,6 @@ async def check_fsub(client: Client, user_id: int):
             unsubbed.append(item)
         except Exception as e:
             logger.warning(f"FSUB check failed for {item.get('name')} ({chat_target}): {e}")
-            # Try fallback to username/link if chat_target was ID
             fallback = item.get("link") or item.get("chat")
             if fallback and str(fallback) != str(chat_target) and not str(fallback).startswith("-100"):
                 try:
@@ -172,7 +171,6 @@ async def check_fsub(client: Client, user_id: int):
                 except Exception as ex2:
                     logger.warning(f"FSUB fallback check also failed for {fallback}: {ex2}")
             
-            # If error is ChatAdminRequired, log error so admin knows to promote bot
             if "CHAT_ADMIN_REQUIRED" in str(e).upper():
                 logger.error(f"❌ Bot must be an ADMIN with invite permissions in {item.get('name')} ({chat_target}) to verify members!")
             continue
@@ -204,7 +202,6 @@ async def start_handler(client: Client, message: Message):
     first_name = message.from_user.first_name or "Aspirant"
     await add_user(user_id, first_name)
     
-    # Check FSUB
     unsubbed = await check_fsub(client, user_id)
     if unsubbed:
         return await message.reply_text(
@@ -212,7 +209,6 @@ async def start_handler(client: Client, message: Message):
             reply_markup=get_fsub_keyboard(unsubbed)
         )
     
-    # Deep Link Handler: Group click se DM mein file delivery
     raw_text = message.text.strip()
     if " " in raw_text:
         cmd, param = raw_text.split(" ", 1)
@@ -349,13 +345,12 @@ async def about_handler(client: Client, message: Message):
 
     await message.reply_text(about_text, reply_markup=InlineKeyboardMarkup(buttons))
 
-# Admin only decorator for cleaner code
 def admin_only():
     async def func(flt, client, message):
         return message.from_user.id in ADMINS
     return filters.create(func)
 
-# /logs Command (Admin Only) - View recent errors
+# /logs Command (Admin Only)
 @app.on_message(filters.command("logs") & admin_only())
 async def logs_handler(client: Client, message: Message):
     try:
@@ -407,7 +402,6 @@ async def fsub_toggle_handler(client: Client, message: Message):
             "• Turn OFF: `/stopfsub` or `/fsub off`"
         )
 
-# ----------------- Force Sub Verification Callback -----------------
 @app.on_callback_query(filters.regex("^check_fsub_again$"))
 async def fsub_callback(client: Client, query: CallbackQuery):
     user_id = query.from_user.id
@@ -421,7 +415,6 @@ async def fsub_callback(client: Client, query: CallbackQuery):
         pass
     await query.message.reply_text("✅ **Access Granted!** You can now search for any notes or study material.")
 
-# ----------------- Real-Time Channel Auto-Indexer & Edit Listener -----------------
 @app.on_message(filters.chat(CHANNEL_ID))
 async def channel_post_listener(client: Client, message: Message):
     data = extract_message_data(message)
@@ -442,7 +435,6 @@ async def channel_post_listener(client: Client, message: Message):
 async def channel_post_edited_listener(client: Client, message: Message):
     await channel_post_listener(client, message)
 
-# ----------------- Admin Command: /index -----------------
 @app.on_message(filters.command("index") & filters.private)
 async def index_channel_handler(client: Client, message: Message):
     if message.from_user.id not in ADMINS:
@@ -500,7 +492,6 @@ async def index_channel_handler(client: Client, message: Message):
 
     await status_msg.edit_text(f"✅ **Indexing Complete!**\nTotal **{count}** materials (PDFs, Photos & Links) are saved in the database.")
 
-# ----------------- Admin Command: /stats -----------------
 @app.on_message(filters.command("stats") & filters.private)
 async def stats_handler(client: Client, message: Message):
     if message.from_user.id not in ADMINS:
@@ -520,7 +511,6 @@ async def stats_handler(client: Client, message: Message):
         f"🔒 **Force Subscribe:** `{fsub_text}`"
     )
 
-# ----------------- Admin Command: /broadcast -----------------
 @app.on_message(filters.command("broadcast") & filters.private)
 async def broadcast_handler(client: Client, message: Message):
     if message.from_user.id not in ADMINS:
@@ -587,7 +577,6 @@ async def broadcast_handler(client: Client, message: Message):
         f"📊 **Total Delivered:** `{u_success + g_success}`"
     )
 
-# ----------------- 1. DM Search Handler (With Next Page Button) -----------------
 EXCLUDED_COMMANDS = ["start", "index", "stats", "broadcast", "id", "startfsub", "stopfsub", "fsub", "help", "ping", "about", "logs"]
 
 @app.on_message(filters.text & filters.private & ~filters.command(EXCLUDED_COMMANDS))
@@ -611,7 +600,7 @@ async def dm_search_handler(client: Client, message: Message):
     if not results:
         return await message.reply_text(
             f"❌ **No material found for:** `{query_text}`\n\n"
-            "• Please check the spelling or try broader keywords (e.g. `Hardik sir`, `Economics`)."
+            "• Please check the spelling or try broader keywords."
         )
 
     buttons = []
@@ -619,7 +608,6 @@ async def dm_search_handler(client: Client, message: Message):
         display_name = get_display_title(item)
         buttons.append([InlineKeyboardButton(display_name, callback_data=f"get_{item['message_id']}")])
 
-    # Next Page button if more than limit (truncate query for 64-byte callback limit)
     safe_query = query_text[:35]
     if total > SEARCH_RESULTS_LIMIT:
         buttons.append([InlineKeyboardButton("Next Page ⏩", callback_data=f"page_1_{safe_query}")])
@@ -629,7 +617,6 @@ async def dm_search_handler(client: Client, message: Message):
         reply_markup=InlineKeyboardMarkup(buttons)
     )
 
-# ----------------- 2. Group Search Handler (Supports /search, /notes, /get) -----------------
 @app.on_message(filters.group & filters.text)
 async def group_search_handler(client: Client, message: Message):
     text = message.text.strip()
@@ -640,14 +627,12 @@ async def group_search_handler(client: Client, message: Message):
     if not any(raw_cmd == cmd or raw_cmd.startswith(f"{cmd}@") for cmd in valid_cmds):
         return
 
-    # Add group only when a valid bot command is triggered (avoids DB write on every message)
     await add_group(message.chat.id, message.chat.title or "Group")
 
     if len(parts) < 2 or not parts[1].strip():
         cmd_display = raw_cmd.split("@")[0]
         return await message.reply_text(
-            f"❗ **Usage:** `{cmd_display} topic_name`\n"
-            f"• *Example:* `{cmd_display} Hardik sir Law` or `{cmd_display} Business Economics`"
+            f"❗ **Usage:** `{cmd_display} topic_name`"
         )
 
     query_text = parts[1].strip()
@@ -667,7 +652,6 @@ async def group_search_handler(client: Client, message: Message):
         deep_link = f"https://t.me/{bot_username}?start=get_{item['message_id']}"
         buttons.append([InlineKeyboardButton(display_name, url=deep_link)])
 
-    # Next Page button for group search (safely bounded)
     safe_query = query_text[:35]
     if total > SEARCH_RESULTS_LIMIT:
         buttons.append([InlineKeyboardButton("Next Page ⏩", callback_data=f"page_1_{safe_query}")])
@@ -677,7 +661,6 @@ async def group_search_handler(client: Client, message: Message):
         reply_markup=InlineKeyboardMarkup(buttons)
     )
 
-# ----------------- Direct File Delivery Callback (DM Only) -----------------
 @app.on_callback_query(filters.regex(r"^get_"))
 async def send_file_callback(client: Client, query: CallbackQuery):
     try:
@@ -695,7 +678,6 @@ async def send_file_callback(client: Client, query: CallbackQuery):
         logger.error(f"File delivery error: {err_str}")
         await query.answer(f"❌ Error: {err_str[:60]}", show_alert=True)
 
-# ----------------- 🔄 Full Pagination Callback (DM & Group Supported) -----------------
 @app.on_callback_query(filters.regex(r"^page_"))
 async def pagination_callback(client: Client, query: CallbackQuery):
     try:
@@ -735,7 +717,6 @@ async def pagination_callback(client: Client, query: CallbackQuery):
         logger.error(f"Pagination Error: {e}")
         await query.answer(f"Error: {str(e)[:60]}", show_alert=True)
 
-# ----------------- Inline Search Mode -----------------
 @app.on_inline_query()
 async def inline_query_handler(client: Client, query: InlineQuery):
     text = query.query.strip()
@@ -759,8 +740,23 @@ async def inline_query_handler(client: Client, query: InlineQuery):
             
     await query.answer(inline_results, cache_time=5)
 
+# Flask Server for Render Port requirement
+web_app = Flask(__name__)
+
+@web_app.route('/')
+def home():
+    return "Bot is active and running!"
+
+def run_web():
+    port = int(os.environ.get("PORT", 10000))
+    web_app.run(host="0.0.0.0", port=port)
+
 # ----------------- Main Execution -----------------
 if __name__ == "__main__":
+    web_thread = threading.Thread(target=run_web)
+    web_thread.daemon = True
+    web_thread.start()
+
     loop = asyncio.get_event_loop()
     try:
         loop.run_until_complete(init_db())

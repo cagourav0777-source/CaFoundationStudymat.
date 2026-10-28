@@ -202,13 +202,16 @@ async def start_handler(client: Client, message: Message):
     first_name = message.from_user.first_name or "Aspirant"
     await add_user(user_id, first_name)
     
+    # Check FSUB with Premium Animated Warning Emoji
     unsubbed = await check_fsub(client, user_id)
     if unsubbed:
         return await message.reply_text(
-            "⚠️ **Access Denied!**\n\nPlease join our official channels below to unlock search access:",
-            reply_markup=get_fsub_keyboard(unsubbed)
+            '<tg-emoji emoji-id="5447644880824181073">⚠️</tg-emoji> <b>Access Denied!</b>\n\nPlease join our official channels below to unlock search access:',
+            reply_markup=get_fsub_keyboard(unsubbed),
+            parse_mode=enums.ParseMode.HTML
         )
     
+    # Deep Link Handler: Group click se DM mein file delivery
     raw_text = message.text.strip()
     if " " in raw_text:
         cmd, param = raw_text.split(" ", 1)
@@ -228,18 +231,20 @@ async def start_handler(client: Client, message: Message):
                 return await message.reply_text(f"❌ Error delivering file: {str(e)}")
 
     bot_username = await get_bot_username(client)
+    
+    # Fully Animated Premium Emojis Integrated Welcome Text
     welcome_text = (
-        f"✨ **Welcome to CA Notes Master Bot!** ✨\n\n"
-        f"👋 Hi **{first_name}**!\n\n"
-        f"🎯 **What I Do:**\n"
-        f"Find CA Foundation & Inter study materials instantly - Notes, Question Banks, MTPs, RTPs & Drive Links!\n\n"
-        f"🔍 **How to Search:**\n"
-        f"Just type any keyword here:\n"
-        f"• `Hardik Sir Law`\n"
-        f"• `Business Economics MTP`\n"
-        f"• `Question Bank Sept 26`\n\n"
-        f"⚡ Get instant results with one tap!\n\n"
-        f"💡 **Pro Tip:** Add me to your study group and use `/notes <topic>` or `/search <topic>` command!"
+        f'<tg-emoji emoji-id="5325547803936572038">✨</tg-emoji> <b>Welcome to CA Notes Master Bot!</b> <tg-emoji emoji-id="5325547803936572038">✨</tg-emoji>\n\n'
+        f'<tg-emoji emoji-id="6199464934460365423">🩷</tg-emoji> Hi <b>{first_name}</b>!\n\n'
+        f'<tg-emoji emoji-id="6221958163520819301">🔥</tg-emoji> <b>What I Do:</b>\n'
+        f'Find CA Foundation & Inter study materials instantly - Notes, Question Banks, MTPs, RTPs & Drive Links!\n\n'
+        f'<tg-emoji emoji-id="5388790720628811468">🔍</tg-emoji> <b>How to Search:</b>\n'
+        f'Just type any keyword here:\n'
+        f'• <code>Hardik Sir Law</code>\n'
+        f'• <code>Business Economics MTP</code>\n'
+        f'• <code>Question Bank Sept 26</code>\n\n'
+        f'<tg-emoji emoji-id="6017003526746542911">📚</tg-emoji> Get instant results with one tap!\n\n'
+        f'<tg-emoji emoji-id="5422439311196834318">💡</tg-emoji> <b>Pro Tip:</b> Add me to your study group and use <code>/notes &lt;topic&gt;</code> or <code>/search &lt;topic&gt;</code> command!'
     )
 
     buttons = [
@@ -247,7 +252,11 @@ async def start_handler(client: Client, message: Message):
         [InlineKeyboardButton("❓ Help & Commands", callback_data="help_menu")]
     ]
 
-    await message.reply_text(welcome_text, reply_markup=InlineKeyboardMarkup(buttons))
+    await message.reply_text(
+        welcome_text, 
+        reply_markup=InlineKeyboardMarkup(buttons),
+        parse_mode=enums.ParseMode.HTML
+    )
 
 # /id Command
 @app.on_message(filters.command("id"))

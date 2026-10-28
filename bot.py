@@ -206,7 +206,7 @@ async def start_handler(client: Client, message: Message):
     unsubbed = await check_fsub(client, user_id)
     if unsubbed:
         return await message.reply_text(
-            '<tg-emoji emoji-id="5447644880824181073">⚠️</tg-emoji> <b>Access Denied!</b>\n\nPlease join our official channels below to unlock search access:',
+            '<tg-emoji emoji-id="5447644880824181073"></tg-emoji> <b>Access Denied!</b>\n\nPlease join our official channels below to unlock search access:',
             reply_markup=get_fsub_keyboard(unsubbed),
             parse_mode=enums.ParseMode.HTML
         )
@@ -234,17 +234,17 @@ async def start_handler(client: Client, message: Message):
     
     # Fully Animated Premium Emojis Integrated Welcome Text
     welcome_text = (
-        f'<tg-emoji emoji-id="5325547803936572038">✨</tg-emoji> <b>Welcome to CA Notes Master Bot!</b> <tg-emoji emoji-id="5325547803936572038">✨</tg-emoji>\n\n'
+        f'<tg-emoji emoji-id="5325547803936572038"></tg-emoji> <b>Welcome to CA Notes Master Bot!</b> <tg-emoji emoji-id="5325547803936572038"></tg-emoji>\n\n'
         f'<tg-emoji emoji-id="6199464934460365423">🩷</tg-emoji> Hi <b>{first_name}</b>!\n\n'
-        f'<tg-emoji emoji-id="6221958163520819301">🔥</tg-emoji> <b>What I Do:</b>\n'
+        f'<tg-emoji emoji-id="6221958163520819301"></tg-emoji> <b>What I Do:</b>\n'
         f'Find CA Foundation & Inter study materials instantly - Notes, Question Banks, MTPs, RTPs & Drive Links!\n\n'
-        f'<tg-emoji emoji-id="5388790720628811468">🔍</tg-emoji> <b>How to Search:</b>\n'
+        f'<tg-emoji emoji-id="5388790720628811468"></tg-emoji> <b>How to Search:</b>\n'
         f'Just type any keyword here:\n'
         f'• <code>Hardik Sir Accounts</code>\n'
         f'• <code>Business Economics MTP</code>\n'
         f'• <code>Question Bank Sept 26</code>\n\n'
-        f'<tg-emoji emoji-id="6017003526746542911">📚</tg-emoji> Get instant results with one tap!\n\n'
-        f'<tg-emoji emoji-id="5422439311196834318">💡</tg-emoji> <b>Pro Tip:</b> Add me to your study group and use <code>/notes &lt;topic&gt;</code> or <code>/search &lt;topic&gt;</code> command!'
+        f'<tg-emoji emoji-id="6017003526746542911"></tg-emoji> Get instant results with one tap!\n\n'
+        f'<tg-emoji emoji-id="5422439311196834318"></tg-emoji> <b>Pro Tip:</b> Add me to your study group and use <code>/notes &lt;topic&gt;</code> or <code>/search &lt;topic&gt;</code> command!'
     )
 
     buttons = [

@@ -240,7 +240,7 @@ async def start_handler(client: Client, message: Message):
         f'Find CA Foundation & Inter study materials instantly - Notes, Question Banks, MTPs, RTPs & Drive Links!\n\n'
         f'<tg-emoji emoji-id="5388790720628811468">🔍</tg-emoji> <b>How to Search:</b>\n'
         f'Just type any keyword here:\n'
-        f'• <code>Hardik Sir Law</code>\n'
+        f'• <code>Hardik Sir Accounts</code>\n'
         f'• <code>Business Economics MTP</code>\n'
         f'• <code>Question Bank Sept 26</code>\n\n'
         f'<tg-emoji emoji-id="6017003526746542911">📚</tg-emoji> Get instant results with one tap!\n\n'

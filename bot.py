@@ -441,6 +441,34 @@ async def list_groups_handler(client: Client, message: Message):
     else:
         await status_msg.edit_text(text)
 
+# /getlink Command (Admin Only) - To get invite link of a connected group
+@app.on_message(filters.command("getlink") & admin_only())
+async def get_link_handler(client: Client, message: Message):
+    if len(message.command) < 2:
+        return await message.reply_text("❗ **Usage:** `/getlink <group_id>`\nExample: `/getlink -1004298223753`")
+    
+    try:
+        chat_id = int(message.command[1].strip())
+        chat = await client.get_chat(chat_id)
+        
+        # Agar group public hai to direct link mil jayega
+        if chat.username:
+            return await message.reply_text(f"🔗 **Group Link:** https://t.me/{chat.username}")
+            
+        # Agar private hai to bot naya invite link banayega (Admin permission needed)
+        link = await client.export_chat_invite_link(chat_id)
+        await message.reply_text(f"🔗 **Invite Link:** {link}")
+        
+    except Exception as e:
+        error_msg = str(e)
+        if "CHAT_ADMIN_REQUIRED" in error_msg:
+            await message.reply_text(
+                f"❌ **Error:** Bot is group me Admin nahi hai ya uske paas 'Invite Users' ki permission nahi hai.\n\n"
+                f"Isliye private link generate nahi ho sakta."
+            )
+        else:
+            await message.reply_text(f"❌ **Error:** `{error_msg}`")
+            
 # /refresh Command (Admin Only) - To clean up inactive groups
 @app.on_message(filters.command("refresh") & admin_only())
 async def refresh_groups_handler(client: Client, message: Message):

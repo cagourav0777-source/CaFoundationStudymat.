@@ -261,3 +261,14 @@ async def get_groups_details():
     except Exception as e:
         logger.error(f"Error getting group details: {e}")
         return []
+
+async def remove_group(chat_id: int):
+    """Remove inactive group from database"""
+    try:
+        if not isinstance(chat_id, int):
+            return False
+        await groups_col.delete_one({"chat_id": chat_id})
+        return True
+    except Exception as e:
+        logger.error(f"Error removing group {chat_id}: {e}")
+        return False

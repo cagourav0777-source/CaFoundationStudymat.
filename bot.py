@@ -187,7 +187,7 @@ def get_fsub_keyboard(unsubbed_list):
     buttons.append([InlineKeyboardButton("🔄 Verify / Try Again", callback_data="check_fsub_again")])
     return InlineKeyboardMarkup(buttons)
 
-# ----------------- Auto Group Add Detector -----------------
+# ----------------- Auto Group Add Detector & Notifier -----------------
 @app.on_chat_member_updated()
 async def on_bot_added(client: Client, chat_member: ChatMemberUpdated):
     if chat_member.new_chat_member and chat_member.new_chat_member.user.is_self:
@@ -195,6 +195,30 @@ async def on_bot_added(client: Client, chat_member: ChatMemberUpdated):
         if chat.type in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
             await add_group(chat.id, chat.title or "Group")
             logger.info(f"👥 Bot added to Group: {chat.title} ({chat.id})")
+            
+            # --- Admin Notification System ---
+            adder = chat_member.from_user
+            adder_mention = adder.mention if adder else "Unknown User"
+            
+            try:
+                member_count = await client.get_chat_members_count(chat.id)
+            except:
+                member_count = "Unknown"
+                
+            notification_text = (
+                f"🔔 **Bot Added to New Group!**\n\n"
+                f"📌 **Group Name:** {chat.title}\n"
+                f"🆔 **Group ID:** `{chat.id}`\n"
+                f"👤 **Added By:** {adder_mention}\n"
+                f"👥 **Total Members:** `{member_count}`"
+            )
+            
+            # Send alert to all Admins
+            for admin_id in ADMINS:
+                try:
+                    await client.send_message(chat_id=admin_id, text=notification_text)
+                except Exception as e:
+                    logger.error(f"Could not send new group alert to admin {admin_id}: {e}")
 
 # ----------------- 🌟 /start Command & Deep-Link Delivery -----------------
 @app.on_message(filters.command("start") & filters.private)
@@ -388,6 +412,34 @@ async def logs_handler(client: Client, message: Message):
                 os.remove(temp_log_path)
     except Exception as e:
         await message.reply_text(f"❌ Error reading logs: {e}")
+
+# /groups Command (Admin Only) - To list all connected groups
+@app.on_message(filters.command("groups") & admin_only())
+async def list_groups_handler(client: Client, message: Message):
+    status_msg = await message.reply_text("⏳ Fetching groups list from database...")
+    
+    groups = await get_groups_details()
+    if not groups:
+        return await status_msg.edit_text("❌ No connected groups found.")
+        
+    text = f"📋 **Connected Groups List (Total: {len(groups)}):**\n\n"
+    for i, g in enumerate(groups, 1):
+        text += f"{i}. **{g['title']}** (`{g['chat_id']}`)\n"
+        
+    if len(text) > 4000:
+        file_path = "groups_list.txt"
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(text.replace("**", "").replace("`", ""))
+            
+        await message.reply_document(
+            document=file_path,
+            caption=f"📋 **Complete Groups List (Total: {len(groups)})**"
+        )
+        await status_msg.delete()
+        if os.path.exists(file_path):
+            os.remove(file_path)
+    else:
+        await status_msg.edit_text(text)
 
 @app.on_message(filters.command(["startfsub", "stopfsub", "fsub"]) & filters.private)
 async def fsub_toggle_handler(client: Client, message: Message):
@@ -587,7 +639,7 @@ async def broadcast_handler(client: Client, message: Message):
         f"📊 **Total Delivered:** `{u_success + g_success}`"
     )
 
-EXCLUDED_COMMANDS = ["start", "index", "stats", "broadcast", "id", "startfsub", "stopfsub", "fsub", "help", "ping", "about", "logs"]
+EXCLUDED_COMMANDS = ["start", "index", "stats", "broadcast", "id", "startfsub", "stopfsub", "fsub", "help", "ping", "about", "logs", "groups"]
 
 @app.on_message(filters.text & filters.private & ~filters.command(EXCLUDED_COMMANDS))
 async def dm_search_handler(client: Client, message: Message):

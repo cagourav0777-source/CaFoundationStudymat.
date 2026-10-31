@@ -25,7 +25,8 @@ from database import (
     init_db, add_user, get_all_users, count_users,
     add_group, get_all_groups, count_groups, save_file,
     search_files, count_files, set_fsub_status, get_fsub_status,
-    get_groups_details
+    get_groups_details, remove_group # <--- remove_group added
+)
 )
 
 # Setup Logging

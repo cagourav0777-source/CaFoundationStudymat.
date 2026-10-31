@@ -27,7 +27,6 @@ from database import (
     search_files, count_files, set_fsub_status, get_fsub_status,
     get_groups_details, remove_group # <--- remove_group added
 )
-)
 
 # Setup Logging
 logging.basicConfig(

@@ -253,3 +253,11 @@ async def count_files():
     except Exception as e:
         logger.error(f"Error counting files: {e}")
         return 0
+
+async def get_groups_details():
+    """Get all group details (chat_id and title)"""
+    try:
+        return [{"chat_id": doc["chat_id"], "title": doc.get("title", "Unknown Group")} async for doc in groups_col.find({})]
+    except Exception as e:
+        logger.error(f"Error getting group details: {e}")
+        return []

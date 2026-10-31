@@ -442,6 +442,43 @@ async def list_groups_handler(client: Client, message: Message):
     else:
         await status_msg.edit_text(text)
 
+# /refresh Command (Admin Only) - To clean up inactive groups
+@app.on_message(filters.command("refresh") & admin_only())
+async def refresh_groups_handler(client: Client, message: Message):
+    status_msg = await message.reply_text("🔄 **Checking active groups...** Please wait.")
+    
+    groups = await get_groups_details()
+    if not groups:
+        return await status_msg.edit_text("❌ No connected groups found in database.")
+        
+    active_count = 0
+    removed_count = 0
+    
+    for g in groups:
+        chat_id = g['chat_id']
+        try:
+            # Check if bot is still a member
+            member = await client.get_chat_member(chat_id, "me")
+            if member.status in [enums.ChatMemberStatus.LEFT, enums.ChatMemberStatus.BANNED]:
+                await remove_group(chat_id)
+                removed_count += 1
+            else:
+                active_count += 1
+        except Exception:
+            # Pyrogram throws an error if the bot was kicked or group is inaccessible
+            await remove_group(chat_id)
+            removed_count += 1
+            
+        # Small delay to avoid Telegram flood limits
+        await asyncio.sleep(0.5)
+            
+    await status_msg.edit_text(
+        f"✅ **Database Refreshed Successfully!**\n\n"
+        f"🟢 **Active Groups:** `{active_count}`\n"
+        f"🗑️ **Removed Inactive:** `{removed_count}`\n\n"
+        f"Use `/groups` now to see the updated clean list."
+    )
+
 @app.on_message(filters.command(["startfsub", "stopfsub", "fsub"]) & filters.private)
 async def fsub_toggle_handler(client: Client, message: Message):
     if message.from_user.id not in ADMINS:

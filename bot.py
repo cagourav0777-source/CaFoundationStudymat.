@@ -472,7 +472,7 @@ async def get_link_handler(client: Client, message: Message):
 # /refresh Command (Admin Only) - To clean up inactive groups and users
 @app.on_message(filters.command("refresh") & admin_only())
 async def refresh_handler(client: Client, message: Message):
-    status_msg = await message.reply_text("🔄 **Checking active Groups and Users...**\nIsme thoda time lag sakta hai, please wait.")
+    status_msg = await message.reply_text("🔄 **Checking active Groups and Users...**\nchecking active users, please wait.")
     
     # 1. --- Groups Cleanup ---
     groups = await get_groups_details()

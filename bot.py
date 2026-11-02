@@ -374,7 +374,7 @@ async def about_handler(client: Client, message: Message):
     )
 
     buttons = [
-        [InlineKeyboardButton("👨‍💻 Developer", url="https://t.me/Cagourav_18")]
+        [InlineKeyboardButton("👨‍💻 Developer", url="https://t.me/Itz_gouravv")]
     ]
 
     await message.reply_text(about_text, reply_markup=InlineKeyboardMarkup(buttons))

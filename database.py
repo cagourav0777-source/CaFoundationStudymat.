@@ -272,3 +272,14 @@ async def remove_group(chat_id: int):
     except Exception as e:
         logger.error(f"Error removing group {chat_id}: {e}")
         return False
+
+async def remove_user(user_id: int):
+    """Remove inactive user from database"""
+    try:
+        if not isinstance(user_id, int):
+            return False
+        await users_col.delete_one({"user_id": user_id})
+        return True
+    except Exception as e:
+        logger.error(f"Error removing user {user_id}: {e}")
+        return False

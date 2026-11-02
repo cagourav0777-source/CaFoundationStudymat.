@@ -469,41 +469,56 @@ async def get_link_handler(client: Client, message: Message):
         else:
             await message.reply_text(f"❌ **Error:** `{error_msg}`")
             
-# /refresh Command (Admin Only) - To clean up inactive groups
+# /refresh Command (Admin Only) - To clean up inactive groups and users
 @app.on_message(filters.command("refresh") & admin_only())
-async def refresh_groups_handler(client: Client, message: Message):
-    status_msg = await message.reply_text("🔄 **Checking active groups...** Please wait.")
+async def refresh_handler(client: Client, message: Message):
+    status_msg = await message.reply_text("🔄 **Checking active Groups and Users...**\nIsme thoda time lag sakta hai, please wait.")
     
+    # 1. --- Groups Cleanup ---
     groups = await get_groups_details()
-    if not groups:
-        return await status_msg.edit_text("❌ No connected groups found in database.")
-        
-    active_count = 0
-    removed_count = 0
+    active_g = 0
+    removed_g = 0
     
-    for g in groups:
-        chat_id = g['chat_id']
-        try:
-            # Check if bot is still a member
-            member = await client.get_chat_member(chat_id, "me")
-            if member.status in [enums.ChatMemberStatus.LEFT, enums.ChatMemberStatus.BANNED]:
+    if groups:
+        for g in groups:
+            chat_id = g['chat_id']
+            try:
+                member = await client.get_chat_member(chat_id, "me")
+                if member.status in [enums.ChatMemberStatus.LEFT, enums.ChatMemberStatus.BANNED]:
+                    await remove_group(chat_id)
+                    removed_g += 1
+                else:
+                    active_g += 1
+            except Exception:
                 await remove_group(chat_id)
-                removed_count += 1
-            else:
-                active_count += 1
-        except Exception:
-            # Pyrogram throws an error if the bot was kicked or group is inaccessible
-            await remove_group(chat_id)
-            removed_count += 1
+                removed_g += 1
+            await asyncio.sleep(0.3)
             
-        # Small delay to avoid Telegram flood limits
-        await asyncio.sleep(0.5)
+    # 2. --- Users Cleanup ---
+    users = await get_all_users()
+    active_u = 0
+    removed_u = 0
+    
+    if users:
+        for u_id in users:
+            try:
+                # Silently check if user is reachable by sending a "typing" action
+                await client.send_chat_action(u_id, enums.ChatAction.TYPING)
+                active_u += 1
+            except Exception:
+                # Agar user ne block kiya hai ya account delete kiya hai to error aayega
+                await remove_user(u_id)
+                removed_u += 1
+            # Sleep to avoid Telegram FloodWait strict limits
+            await asyncio.sleep(0.3)
             
     await status_msg.edit_text(
         f"✅ **Database Refreshed Successfully!**\n\n"
-        f"🟢 **Active Groups:** `{active_count}`\n"
-        f"🗑️ **Removed Inactive:** `{removed_count}`\n\n"
-        f"Use `/groups` now to see the updated clean list."
+        f"👥 **Users (DM):**\n"
+        f"🟢 Active: `{active_u}` | 🗑️ Removed: `{removed_u}`\n\n"
+        f"💬 **Groups:**\n"
+        f"🟢 Active: `{active_g}` | 🗑️ Removed: `{removed_g}`\n\n"
+        f"Database is now 100% clean."
     )
 
 @app.on_message(filters.command(["startfsub", "stopfsub", "fsub"]) & filters.private)
